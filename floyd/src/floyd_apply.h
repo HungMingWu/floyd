@@ -22,8 +22,8 @@ class FloydImpl;
 
 class FloydApply {
  public:
-  FloydApply(FloydContext* context, rocksdb::DB* db, RaftMeta* raft_meta,
-      RaftLog* raft_log, FloydImpl* impl_, Logger* info_log); 
+  FloydApply(FloydContext& context, rocksdb::DB* db, RaftMeta& raft_meta,
+      RaftLog& raft_log, FloydImpl* impl_, Logger* info_log); 
   virtual ~FloydApply();
   int Start();
   int Stop();
@@ -31,13 +31,13 @@ class FloydApply {
 
  private:
   pink::BGThread bg_thread_;
-  FloydContext* const context_;
+  FloydContext& context_;
   rocksdb::DB* const db_;
   /*
    * we will store the increasing id in raft_meta_
    */
-  RaftMeta* const raft_meta_;
-  RaftLog* const raft_log_;
+  RaftMeta& raft_meta_;
+  RaftLog& raft_log_;
   FloydImpl* const impl_;
   Logger* const info_log_;
   static void ApplyStateMachineWrapper(void* arg);

@@ -24,12 +24,12 @@ class RaftLog;
 class ClientPool;
 class FloydApply;
 class Peer;
-typedef std::map<std::string, Peer*> PeersSet;
+typedef std::map<std::string, std::unique_ptr<Peer>> PeersSet;
 
 class Peer {
  public:
-  Peer(std::string server, PeersSet *peers, FloydContext* context, FloydPrimary* primary, RaftMeta* raft_meta,
-      RaftLog* raft_log, ClientPool* pool, FloydApply* apply, const Options& options, Logger* info_log);
+  Peer(std::string server, PeersSet *peers, FloydContext& context, FloydPrimary& primary, RaftMeta& raft_meta,
+      RaftLog& raft_log, ClientPool &pool, FloydApply& apply, const Options& options, Logger* info_log);
   ~Peer();
 
   int Start();
@@ -80,12 +80,12 @@ class Peer {
 
   std::string peer_addr_;
   PeersSet* const peers_;
-  FloydContext* const context_;
-  FloydPrimary* const primary_;
-  RaftMeta* const raft_meta_;
-  RaftLog* const raft_log_;
-  ClientPool* const pool_;
-  FloydApply* const apply_;
+  FloydContext& context_;
+  FloydPrimary& primary_;
+  RaftMeta& raft_meta_;
+  RaftLog& raft_log_;
+  ClientPool& pool_;
+  FloydApply& apply_;
   Options options_;
   Logger* const info_log_;
 

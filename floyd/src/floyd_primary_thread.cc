@@ -27,7 +27,7 @@
 
 namespace floyd {
 
-FloydPrimary::FloydPrimary(FloydContext* context, PeersSet* peers, RaftMeta* raft_meta,
+FloydPrimary::FloydPrimary(FloydContext& context, PeersSet* peers, RaftMeta& raft_meta,
     const Options& options, Logger* info_log)
   : context_(context),
     peers_(peers),
@@ -87,8 +87,8 @@ void FloydPrimary::LaunchHeartBeatWrapper(void *arg) {
 }
 
 void FloydPrimary::LaunchHeartBeat() {
-  slash::MutexLock l(&context_->global_mu);
-  if (context_->role == Role::kLeader) {
+  std::lock_guard l(context_.global_mu);
+  if (context_.role == Role::kLeader) {
     NoticePeerTask(kNewCommand);
     AddTask(kHeartBeat);
   }
@@ -99,23 +99,23 @@ void FloydPrimary::LaunchCheckLeaderWrapper(void *arg) {
 }
 
 void FloydPrimary::LaunchCheckLeader() {
-  slash::MutexLock l(&context_->global_mu);
-  if (context_->role == Role::kFollower || context_->role == Role::kCandidate) {
+  std::lock_guard l(context_.global_mu);
+  if (context_.role == Role::kFollower || context_.role == Role::kCandidate) {
     if (options_.single_mode) {
-      context_->BecomeLeader();
-      context_->voted_for_ip = options_.local_ip;
-      context_->voted_for_port = options_.local_port;
-      raft_meta_->SetCurrentTerm(context_->current_term);
-      raft_meta_->SetVotedForIp(context_->voted_for_ip);
-      raft_meta_->SetVotedForPort(context_->voted_for_port);
-    } else if (context_->last_op_time + options_.check_leader_us < slash::NowMicros()) {
-      context_->BecomeCandidate();
+      context_.BecomeLeader();
+      context_.voted_for_ip = options_.local_ip;
+      context_.voted_for_port = options_.local_port;
+      raft_meta_.SetCurrentTerm(context_.current_term);
+      raft_meta_.SetVotedForIp(context_.voted_for_ip);
+      raft_meta_.SetVotedForPort(context_.voted_for_port);
+    } else if (context_.last_op_time + options_.check_leader_us < slash::NowMicros()) {
+      context_.BecomeCandidate();
       LOGV(INFO_LEVEL, info_log_, "FloydPrimary::LaunchCheckLeader: %s:%d Become Candidate because of timeout, new term is %d"
-         " voted for %s:%d", options_.local_ip.c_str(), options_.local_port, context_->current_term,
-         context_->voted_for_ip.c_str(), context_->voted_for_port);
-      raft_meta_->SetCurrentTerm(context_->current_term);
-      raft_meta_->SetVotedForIp(context_->voted_for_ip);
-      raft_meta_->SetVotedForPort(context_->voted_for_port);
+         " voted for %s:%d", options_.local_ip.c_str(), options_.local_port, context_.current_term,
+         context_.voted_for_ip.c_str(), context_.voted_for_port);
+      raft_meta_.SetCurrentTerm(context_.current_term);
+      raft_meta_.SetVotedForIp(context_.voted_for_ip);
+      raft_meta_.SetVotedForPort(context_.voted_for_port);
       NoticePeerTask(kHeartBeat);
     }
   }
@@ -128,7 +128,7 @@ void FloydPrimary::LaunchNewCommandWrapper(void *arg) {
 
 void FloydPrimary::LaunchNewCommand() {
   LOGV(DEBUG_LEVEL, info_log_, "FloydPrimary::LaunchNewCommand");
-  if (context_->role != Role::kLeader) {
+  if (context_.role != Role::kLeader) {
     LOGV(WARN_LEVEL, info_log_, "FloydPrimary::LaunchNewCommand, Not leader yet");
     return;
   }
@@ -142,12 +142,12 @@ void FloydPrimary::NoticePeerTask(TaskType type) {
     switch (type) {
     case kHeartBeat:
       LOGV(INFO_LEVEL, info_log_, "FloydPrimary::NoticePeerTask server %s:%d Add request Task to queue to %s at term %d",
-          options_.local_ip.c_str(), options_.local_port, peer.second->peer_addr().c_str(), context_->current_term);
+          options_.local_ip.c_str(), options_.local_port, peer.second->peer_addr().c_str(), context_.current_term);
       peer.second->AddRequestVoteTask();
       break;
     case kNewCommand:
       LOGV(DEBUG_LEVEL, info_log_, "FloydPrimary::NoticePeerTask server %s:%d Add appendEntries Task to queue to %s at term %d",
-          options_.local_ip.c_str(), options_.local_port, peer.second->peer_addr().c_str(), context_->current_term);
+          options_.local_ip.c_str(), options_.local_port, peer.second->peer_addr().c_str(), context_.current_term);
       peer.second->AddAppendEntriesTask();
       break;
     default:

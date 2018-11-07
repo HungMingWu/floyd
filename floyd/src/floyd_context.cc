@@ -16,12 +16,12 @@
 
 namespace floyd {
 
-void FloydContext::RecoverInit(RaftMeta *raft_meta) {
-  current_term = raft_meta->GetCurrentTerm();
-  voted_for_ip = raft_meta->GetVotedForIp();
-  voted_for_port = raft_meta->GetVotedForPort();
-  commit_index = raft_meta->GetCommitIndex();
-  last_applied = raft_meta->GetLastApplied();
+void FloydContext::RecoverInit(const RaftMeta &raft_meta) {
+  current_term = raft_meta.GetCurrentTerm();
+  voted_for_ip = raft_meta.GetVotedForIp();
+  voted_for_port = raft_meta.GetVotedForPort();
+  commit_index = raft_meta.GetCommitIndex();
+  last_applied = raft_meta.GetLastApplied();
   role = Role::kFollower;
 }
 

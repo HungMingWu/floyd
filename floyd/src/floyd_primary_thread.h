@@ -39,7 +39,7 @@ enum TaskType {
 
 class FloydPrimary {
  public:
-  FloydPrimary(FloydContext* context, PeersSet* peers, RaftMeta* raft_meta,
+  FloydPrimary(FloydContext& context, PeersSet* peers, RaftMeta& raft_meta,
       const Options& options, Logger* info_log);
   virtual ~FloydPrimary();
 
@@ -47,9 +47,9 @@ class FloydPrimary {
   int Stop();
   void AddTask(TaskType type, bool is_delay = true);
  private:
-  FloydContext* const context_;
+  FloydContext& context_;
   PeersSet* const peers_;
-  RaftMeta* const raft_meta_;
+  RaftMeta& raft_meta_;
   Options options_;
   Logger* const info_log_;
 

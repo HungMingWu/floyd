@@ -11,10 +11,10 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <mutex>
 
 #include "pink/include/pink_cli.h"
 #include "slash/include/slash_status.h"
-#include "slash/include/slash_mutex.h"
 
 namespace floyd {
 
@@ -24,7 +24,7 @@ class Logger;
 
 struct Client {
   pink::PinkCli* cli;
-  slash::Mutex mu;
+  std::mutex mu;
 
   Client(const std::string& ip, int port) {
     cli = pink::NewPbCli(ip, port);
@@ -45,7 +45,7 @@ class ClientPool {
   Logger* const info_log_;
   int timeout_ms_;
   int retry_;
-  slash::Mutex mu_;
+  std::mutex mu_;
   std::map<std::string, Client*> client_map_;
 
   Client* GetClient(const std::string& server);

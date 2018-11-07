@@ -36,7 +36,7 @@ class CmdRequest;
 class CmdResponse;
 class CmdResponse_ServerStatus;
 
-typedef std::map<std::string, Peer*> PeersSet;
+typedef std::map<std::string, std::unique_ptr<Peer>> PeersSet;
 
 static const std::string kMemberConfigKey = "#MEMBERCONFIG";
 
@@ -87,20 +87,20 @@ class FloydImpl : public Floyd {
   // state machine db point
   // raft log
   rocksdb::DB* log_and_meta_;  // used to store logs and meta data
-  RaftLog* raft_log_;
-  RaftMeta* raft_meta_;
+  std::unique_ptr<RaftLog> raft_log_;
+  std::unique_ptr<RaftMeta> raft_meta_;
 
   Options options_;
   // debug log used for ouput to file
   Logger* info_log_;
 
-  FloydContext* context_;
+  std::unique_ptr<FloydContext> context_;
 
-  FloydWorker* worker_;
-  FloydApply* apply_;
-  FloydPrimary* primary_;
+  std::unique_ptr<FloydWorker> worker_;
+  std::unique_ptr<FloydApply> apply_;
+  std::unique_ptr<FloydPrimary> primary_;
   PeersSet peers_;
-  ClientPool* worker_client_pool_;
+  std::unique_ptr<ClientPool> worker_client_pool_;
 
   bool IsSelf(const std::string& ip_port);
 

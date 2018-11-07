@@ -11,9 +11,9 @@
 #include <atomic>
 #include <string>
 #include <vector>
+#include <mutex>
 
 #include "rocksdb/db.h"
-#include "slash/include/slash_mutex.h"
 
 namespace floyd {
 
@@ -39,7 +39,7 @@ class RaftLog {
   /*
    * mutex for last_log_index_
    */
-  slash::Mutex lli_mutex_;
+  std::mutex lli_mutex_;
   uint64_t last_log_index_;
 
   /*

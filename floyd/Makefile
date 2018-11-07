@@ -3,7 +3,7 @@ CC=cc
 CXX=g++
 LDFLAGS= -lpthread -lrt -lprotobuf
 CFLAGS= -fno-builtin-memcmp -msse -msse4.2
-CXXFLAGS= -std=c++11 -fno-builtin-memcmp -msse -msse4.2
+CXXFLAGS= -std=c++17 -fno-builtin-memcmp -msse -msse4.2
 PROFILING_FLAGS=-pg
 ARFLAGS = rs
 OPT=

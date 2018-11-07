@@ -10,16 +10,13 @@
 
 #include <string>
 #include <set>
+#include <mutex>
+#include <condition_variable>
 
 #include "floyd/include/floyd_options.h"
 #include "floyd/src/raft_log.h"
 
-#include "slash/include/slash_status.h"
-#include "slash/include/slash_mutex.h"
-
 namespace floyd {
-
-using slash::Status;
 
 enum Role {
   kFollower = 0,
@@ -42,10 +39,10 @@ struct FloydContext {
       vote_quorum(0),
       commit_index(0),
       last_applied(0),
-      last_op_time(0),
-      apply_cond(&apply_mu) {}
+      last_op_time(0)
+      {}
 
-  void RecoverInit(RaftMeta *raft);
+  void RecoverInit(const RaftMeta &raft);
   void BecomeFollower(uint64_t new_iterm,
       const std::string leader_ip = "", int port = 0);
   void BecomeCandidate();
@@ -70,9 +67,9 @@ struct FloydContext {
 
   // mutex protect commit_index
   // used in floyd_apply thread and floyd_peer thread
-  slash::Mutex global_mu;
-  slash::Mutex apply_mu;
-  slash::CondVar apply_cond;
+  std::mutex global_mu;
+  std::mutex apply_mu;
+  std::condition_variable apply_cond;
 };
 
 } // namespace floyd

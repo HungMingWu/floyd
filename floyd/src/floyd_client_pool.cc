@@ -69,7 +69,7 @@ Status ClientPool::SendAndRecv(const std::string& server, const CmdRequest& req,
   pink::PinkCli* cli = client->cli;
 
   Status ret = Status::Incomplete("Not send");
-  slash::MutexLock l(&client->mu);
+  std::lock_guard l(client->mu);
   ret = UpHoldCli(client);
   if (!ret.ok()) {
     if (req.type() == kAppendEntries) {
@@ -129,7 +129,7 @@ Status ClientPool::SendAndRecv(const std::string& server, const CmdRequest& req,
 }
 
 ClientPool::~ClientPool() {
-  slash::MutexLock l(&mu_);
+  std::lock_guard l(mu_);
   for (auto& iter : client_map_) {
     delete iter.second;
   }
@@ -137,7 +137,7 @@ ClientPool::~ClientPool() {
 }
 
 Client* ClientPool::GetClient(const std::string& server) {
-  slash::MutexLock l(&mu_);
+  std::lock_guard l(mu_);
   auto iter = client_map_.find(server);
   if (iter == client_map_.end()) {
     std::string ip;

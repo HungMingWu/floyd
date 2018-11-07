@@ -21,8 +21,8 @@
 
 namespace floyd {
 
-FloydApply::FloydApply(FloydContext* context, rocksdb::DB* db, RaftMeta* raft_meta,
-    RaftLog* raft_log, FloydImpl* impl, Logger* info_log)
+FloydApply::FloydApply(FloydContext& context, rocksdb::DB* db, RaftMeta& raft_meta,
+    RaftLog& raft_log, FloydImpl* impl, Logger* info_log)
   : bg_thread_(1024 * 1024 * 1024),
     context_(context),
     db_(db),
@@ -60,10 +60,10 @@ void FloydApply::ApplyStateMachineWrapper(void* arg) {
 }
 
 void FloydApply::ApplyStateMachine() {
-  uint64_t last_applied = context_->last_applied;
+  uint64_t last_applied = context_.last_applied;
   // Apply as more entry as possible
   uint64_t commit_index;
-  commit_index = context_->commit_index;
+  commit_index = context_.commit_index;
 
   LOGV(DEBUG_LEVEL, info_log_, "FloydApply::ApplyStateMachine: last_applied: %lu, commit_index: %lu",
             last_applied, commit_index);
@@ -74,7 +74,7 @@ void FloydApply::ApplyStateMachine() {
   // TODO: use batch commit to optimization
   while (last_applied < commit_index) {
     last_applied++;
-    raft_log_->GetEntry(last_applied, &log_entry);
+    raft_log_.GetEntry(last_applied, &log_entry);
     // TODO: we need change the s type
     // since the Apply may not operate rocksdb
     rocksdb::Status s = Apply(log_entry);
@@ -86,11 +86,10 @@ void FloydApply::ApplyStateMachine() {
       return;
     }
   }
-  context_->apply_mu.Lock();
-  context_->last_applied = last_applied;
-  raft_meta_->SetLastApplied(last_applied);
-  context_->apply_mu.Unlock();
-  context_->apply_cond.SignalAll();
+  std::lock_guard l(context_.apply_mu);
+  context_.last_applied = last_applied;
+  raft_meta_.SetLastApplied(last_applied);
+  context_.apply_cond.notify_all();
 }
 
 rocksdb::Status FloydApply::Apply(const Entry& entry) {
@@ -163,7 +162,7 @@ rocksdb::Status FloydApply::Apply(const Entry& entry) {
     case Entry_OpType_kAddServer:
       ret = MembershipChange(entry.server(), true);
       if (ret.ok()) {
-        context_->members.insert(entry.server());
+        context_.members.insert(entry.server());
         impl_->AddNewPeer(entry.server());
       }
       LOGV(INFO_LEVEL, info_log_, "FloydApply::Apply Add server %s to cluster",
@@ -172,7 +171,7 @@ rocksdb::Status FloydApply::Apply(const Entry& entry) {
     case Entry_OpType_kRemoveServer:
       ret = MembershipChange(entry.server(), false);
       if (ret.ok()) {
-        context_->members.erase(entry.server());
+        context_.members.erase(entry.server());
         impl_->RemoveOutPeer(entry.server());
       }
       LOGV(INFO_LEVEL, info_log_, "FloydApply::Apply Remove server %s to cluster",

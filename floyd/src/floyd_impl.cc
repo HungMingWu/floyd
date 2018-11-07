@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 #include <algorithm>
+#include <chrono>
 
 #include "pink/include/bg_thread.h"
 #include "slash/include/env.h"
@@ -159,17 +160,9 @@ FloydImpl::~FloydImpl() {
   worker_->Stop();
   primary_->Stop();
   apply_->Stop();
-  delete worker_;
-  delete worker_client_pool_;
-  delete primary_;
-  delete apply_;
   for (auto& pt : peers_) {
     pt.second->Stop();
-    delete pt.second;
   }
-  delete context_;
-  delete raft_meta_;
-  delete raft_log_;
   delete info_log_;
   delete db_;
   delete log_and_meta_;
@@ -225,8 +218,8 @@ void FloydImpl::AddNewPeer(const std::string& server) {
   if (peers_iter == peers_.end()) {
     LOGV(INFO_LEVEL, info_log_, "FloydImpl::ApplyAddMember server %s:%d add new peer thread %s",
         options_.local_ip.c_str(), options_.local_port, server.c_str());
-    Peer* pt = new Peer(server, &peers_, context_, primary_, raft_meta_, raft_log_,
-        worker_client_pool_, apply_, options_, info_log_);
+    Peer* pt = new Peer(server, &peers_, *context_, *primary_, *raft_meta_, *raft_log_,
+        *worker_client_pool_, *apply_, options_, info_log_);
     peers_.insert(std::pair<std::string, Peer*>(server, pt));
     pt->Start();
   }
@@ -242,7 +235,6 @@ void FloydImpl::RemoveOutPeer(const std::string& server) {
     LOGV(INFO_LEVEL, info_log_, "FloydImpl::ApplyRemoveMember server %s:%d remove peer thread %s",
         options_.local_ip.c_str(), options_.local_port, server.c_str());
     peers_iter->second->Stop();
-    delete peers_iter->second;
     peers_.erase(peers_iter);
   }
 }
@@ -252,8 +244,8 @@ int FloydImpl::InitPeers() {
   // peers_.clear();
   for (auto iter = context_->members.begin(); iter != context_->members.end(); iter++) {
     if (!IsSelf(*iter)) {
-      Peer* pt = new Peer(*iter, &peers_, context_, primary_, raft_meta_, raft_log_,
-          worker_client_pool_, apply_, options_, info_log_);
+      Peer* pt = new Peer(*iter, &peers_, *context_, *primary_, *raft_meta_, *raft_log_,
+          *worker_client_pool_, *apply_, options_, info_log_);
       peers_.insert(std::pair<std::string, Peer*>(*iter, pt));
     }
   }
@@ -278,7 +270,7 @@ Status FloydImpl::Init() {
   }
 
   // TODO(anan) set timeout and retry
-  worker_client_pool_ = new ClientPool(info_log_);
+  worker_client_pool_ = std::make_unique<ClientPool>(info_log_);
 
   // Create DB
   rocksdb::Options options;
@@ -298,11 +290,11 @@ Status FloydImpl::Init() {
   }
 
   // Recover Context
-  raft_log_ = new RaftLog(log_and_meta_, info_log_);
-  raft_meta_ = new RaftMeta(log_and_meta_, info_log_);
+  raft_log_ = std::make_unique<RaftLog>(log_and_meta_, info_log_);
+  raft_meta_ = std::make_unique<RaftMeta>(log_and_meta_, info_log_);
   raft_meta_->Init();
-  context_ = new FloydContext(options_);
-  context_->RecoverInit(raft_meta_);
+  context_ = std::make_unique<FloydContext>(options_);
+  context_->RecoverInit(*raft_meta_);
 
   // Recover Members when exist
   std::string mval;
@@ -334,17 +326,17 @@ Status FloydImpl::Init() {
 
   // peers and primary refer to each other
   // Create PrimaryThread before Peers
-  primary_ = new FloydPrimary(context_, &peers_, raft_meta_, options_, info_log_);
+  primary_ = std::make_unique<FloydPrimary>(*context_, &peers_, *raft_meta_, options_, info_log_);
 
   // Start worker thread after Peers, because WorkerHandle will check peers
-  worker_ = new FloydWorker(options_.local_port, 1000, this);
+  worker_ = std::make_unique<FloydWorker>(options_.local_port, 1000, this);
   int ret = 0;
   if ((ret = worker_->Start()) != 0) {
     LOGV(ERROR_LEVEL, info_log_, "FloydImpl::Init worker thread failed to start, ret is %d", ret);
     return Status::Corruption("failed to start worker, return " + std::to_string(ret));
   }
   // Apply thread should start at the last
-  apply_ = new FloydApply(context_, db_, raft_meta_, raft_log_, this, info_log_);
+  apply_ = std::make_unique<FloydApply>(*context_, db_, *raft_meta_, *raft_log_, this, info_log_);
 
   InitPeers();
 
@@ -518,7 +510,7 @@ bool FloydImpl::GetServerStatus(std::string* msg) {
   LOGV(DEBUG_LEVEL, info_log_, "FloydImpl::GetServerStatus start");
   CmdResponse_ServerStatus server_status;
   {
-  slash::MutexLock l(&context_->global_mu);
+  std::lock_guard l(context_->global_mu);
   DoGetServerStatus(&server_status);
   }
 
@@ -542,7 +534,7 @@ Status FloydImpl::DoCommand(const CmdRequest& request, CmdResponse *response) {
   std::string leader_ip;
   int leader_port;
   {
-  slash::MutexLock l(&context_->global_mu);
+  std::lock_guard l(context_->global_mu);
   leader_ip = context_->leader_ip;
   leader_port = context_->leader_port;
   }
@@ -630,9 +622,9 @@ Status FloydImpl::ExecuteCommand(const CmdRequest& request,
   }
 
   {
-  slash::MutexLock l(&context_->apply_mu);
+  std::unique_lock l(context_->apply_mu);
   while (context_->last_applied < last_log_index) {
-    if (!context_->apply_cond.TimedWait(1000)) {
+    if (context_->apply_cond.wait_for(l, std::chrono::milliseconds(1000)) == std::cv_status::timeout) {
       return Status::Timeout("FloydImpl::ExecuteCommand Timeout");
     }
   }
@@ -704,7 +696,7 @@ Status FloydImpl::ExecuteCommand(const CmdRequest& request,
 }
 
 int FloydImpl::ReplyRequestVote(const CmdRequest& request, CmdResponse* response) {
-  slash::MutexLock l(&context_->global_mu);
+  std::lock_guard l(context_->global_mu);
   bool granted = false;
   CmdRequest_RequestVote request_vote = request.request_vote();
   LOGV(DEBUG_LEVEL, info_log_, "FloydImpl::ReplyRequestVote: my_term=%lu request.term=%lu",
@@ -785,7 +777,7 @@ bool FloydImpl::AdvanceFollowerCommitIndex(uint64_t leader_commit) {
 int FloydImpl::ReplyAppendEntries(const CmdRequest& request, CmdResponse* response) {
   bool success = false;
   CmdRequest_AppendEntries append_entries = request.append_entries();
-  slash::MutexLock l(&context_->global_mu);
+  std::lock_guard l(context_->global_mu);
   // update last_op_time to avoid another leader election
   context_->last_op_time = slash::NowMicros();
   // Ignore stale term

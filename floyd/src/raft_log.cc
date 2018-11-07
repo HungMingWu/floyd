@@ -55,7 +55,7 @@ RaftLog::~RaftLog() {
 }
 
 uint64_t RaftLog::Append(const std::vector<const Entry *> &entries) {
-  slash::MutexLock l(&lli_mutex_);
+  std::lock_guard l(lli_mutex_);
   rocksdb::WriteBatch wb;
   LOGV(DEBUG_LEVEL, info_log_, "RaftLog::Append: entries.size %lld", entries.size());
   // try to commit entries in one batch
@@ -80,7 +80,7 @@ uint64_t RaftLog::GetLastLogIndex() {
 }
 
 int RaftLog::GetEntry(const uint64_t index, Entry *entry) {
-  slash::MutexLock l(&lli_mutex_);
+  std::lock_guard l(lli_mutex_);
   std::string buf = UintToBitStr(index);
   std::string res;
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), buf, &res);
@@ -94,7 +94,7 @@ int RaftLog::GetEntry(const uint64_t index, Entry *entry) {
 }
 
 bool RaftLog::GetLastLogTermAndIndex(uint64_t* last_log_term, uint64_t* last_log_index) {
-  slash::MutexLock l(&lli_mutex_);
+  std::lock_guard l(lli_mutex_);
   if (last_log_index_ == 0) {
     *last_log_index = 0;
     *last_log_term = 0;

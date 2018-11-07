@@ -42,18 +42,18 @@ class RaftMeta {
   void Init();
 
   // return persistent state from zeppelin
-  uint64_t GetCurrentTerm();
+  uint64_t GetCurrentTerm() const;
   void SetCurrentTerm(const uint64_t current_term);
 
-  std::string GetVotedForIp();
-  int GetVotedForPort(); 
+  std::string GetVotedForIp() const;
+  int GetVotedForPort() const;
   void SetVotedForIp(const std::string ip);
   void SetVotedForPort(const int port);
 
-  uint64_t GetCommitIndex();
+  uint64_t GetCommitIndex() const;
   void SetCommitIndex(const uint64_t commit_index);
 
-  uint64_t GetLastApplied();
+  uint64_t GetLastApplied() const;
   void SetLastApplied(uint64_t last_applied);
 
   uint64_t GetNewFencingToken();

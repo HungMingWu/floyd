@@ -52,7 +52,7 @@ void RaftMeta::Init() {
   }
 }
 
-uint64_t RaftMeta::GetCurrentTerm() {
+uint64_t RaftMeta::GetCurrentTerm() const {
   std::string buf;
   uint64_t ans;
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), kCurrentTerm, &buf);
@@ -70,7 +70,7 @@ void RaftMeta::SetCurrentTerm(const uint64_t current_term) {
   return;
 }
 
-std::string RaftMeta::GetVotedForIp() {
+std::string RaftMeta::GetVotedForIp() const {
   std::string buf;
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), kVoteForIp, &buf);
   if (s.IsNotFound()) {
@@ -84,7 +84,7 @@ void RaftMeta::SetVotedForIp(const std::string ip) {
   return;
 }
 
-int RaftMeta::GetVotedForPort() {
+int RaftMeta::GetVotedForPort() const {
   std::string buf;
   int ans;
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), kVoteForPort, &buf);
@@ -102,7 +102,7 @@ void RaftMeta::SetVotedForPort(const int port) {
   return;
 }
 
-uint64_t RaftMeta::GetCommitIndex() {
+uint64_t RaftMeta::GetCommitIndex() const {
   std::string buf;
   uint64_t ans;
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), kCommitIndex, &buf);
@@ -119,7 +119,7 @@ void RaftMeta::SetCommitIndex(uint64_t commit_index) {
   db_->Put(rocksdb::WriteOptions(), kCommitIndex, std::string(buf, 8));
 }
 
-uint64_t RaftMeta::GetLastApplied() {
+uint64_t RaftMeta::GetLastApplied() const {
   std::string buf;
   uint64_t ans;
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), kLastApplied, &buf);
