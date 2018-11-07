@@ -242,12 +242,11 @@ void Peer::AppendEntriesRPC() {
   peer_last_op_time = slash::NowMicros();
 
   if (prev_log_index != 0) {
-    Entry entry;
-    if (raft_log_.GetEntry(prev_log_index, &entry) != 0) {
+    if (auto entry = raft_log_.GetEntry(prev_log_index); !entry) {
       LOGV(WARN_LEVEL, info_log_, "Peer::AppendEntriesRPC: Get my(%s:%d) Entry index %llu "
           "not found", options_.local_ip.c_str(), options_.local_port, prev_log_index);
     } else {
-      prev_log_term = entry.term();
+      prev_log_term = entry->term();
     }
   }
   current_term = context_.current_term;
@@ -261,9 +260,8 @@ void Peer::AppendEntriesRPC() {
   append_entries->set_leader_commit(context_.commit_index);
   }
 
-  Entry *tmp_entry = new Entry();
   for (uint64_t index = next_index_; index <= last_log_index; index++) {
-    if (raft_log_.GetEntry(index, tmp_entry) == 0) {
+    if (auto tmp_entry = raft_log_.GetEntry(index); tmp_entry) {
       // TODO(ba0tiao) how to avoid memory copy here
       Entry *entry = append_entries->add_entries();
       *entry = *tmp_entry;
@@ -279,7 +277,6 @@ void Peer::AppendEntriesRPC() {
       break;
     }
   }
-  delete tmp_entry;
   LOGV(DEBUG_LEVEL, info_log_, "Peer::AppendEntriesRPC: peer_addr(%s)'s next_index_ %llu, my last_log_index %llu"
       " AppendEntriesRPC will send %d iterm", peer_addr_.c_str(), next_index_.load(), last_log_index, num_entries);
   // if the AppendEntries don't contain any log item

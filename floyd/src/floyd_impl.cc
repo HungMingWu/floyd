@@ -823,13 +823,12 @@ int FloydImpl::ReplyAppendEntries(const CmdRequest& request, CmdResponse* respon
 
   // we compare peer's prev index and term with my last log index and term
   uint64_t my_last_log_term = 0;
-  Entry entry;
   LOGV(DEBUG_LEVEL, info_log_, "FloydImpl::ReplyAppendEntries "
       "prev_log_index: %lu\n", append_entries.prev_log_index());
   if (append_entries.prev_log_index() == 0) {
     my_last_log_term = 0;
-  } else if (raft_log_->GetEntry(append_entries.prev_log_index(), &entry) == 0) {
-    my_last_log_term = entry.term();
+  } else if (auto entry = raft_log_->GetEntry(append_entries.prev_log_index()); entry) {
+    my_last_log_term = entry->term();
   } else {
     LOGV(WARN_LEVEL, info_log_, "FloydImple::ReplyAppentries: can't "
         "get Entry from raft_log prev_log_index %llu", append_entries.prev_log_index());

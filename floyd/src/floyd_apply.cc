@@ -67,17 +67,16 @@ void FloydApply::ApplyStateMachine() {
 
   LOGV(DEBUG_LEVEL, info_log_, "FloydApply::ApplyStateMachine: last_applied: %lu, commit_index: %lu",
             last_applied, commit_index);
-  Entry log_entry;
   if (last_applied >= commit_index) {
     return;
   }
   // TODO: use batch commit to optimization
   while (last_applied < commit_index) {
     last_applied++;
-    raft_log_.GetEntry(last_applied, &log_entry);
+    auto log_entry = raft_log_.GetEntry(last_applied);
     // TODO: we need change the s type
     // since the Apply may not operate rocksdb
-    rocksdb::Status s = Apply(log_entry);
+    rocksdb::Status s = Apply(*log_entry);
     if (!s.ok()) {
       LOGV(WARN_LEVEL, info_log_, "FloydApply::ApplyStateMachine: Apply log entry failed, at: %d, error: %s",
           last_applied, s.ToString().c_str());

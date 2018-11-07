@@ -27,7 +27,7 @@ class RaftLog {
 
   uint64_t Append(const std::vector<const Entry *> &entries);
 
-  int GetEntry(uint64_t index, Entry *entry);
+  std::unique_ptr<Entry> GetEntry(uint64_t index);
 
   uint64_t GetLastLogIndex();
   bool GetLastLogTermAndIndex(uint64_t* last_log_term, uint64_t* last_log_index);

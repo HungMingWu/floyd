@@ -79,18 +79,18 @@ uint64_t RaftLog::GetLastLogIndex() {
   return last_log_index_;
 }
 
-int RaftLog::GetEntry(const uint64_t index, Entry *entry) {
+std::unique_ptr<Entry> RaftLog::GetEntry(const uint64_t index) {
   std::lock_guard l(lli_mutex_);
   std::string buf = UintToBitStr(index);
   std::string res;
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), buf, &res);
   if (s.IsNotFound()) {
     LOGV(ERROR_LEVEL, info_log_, "RaftLog::GetEntry: GetEntry not found, index is %lld", index);
-    entry = NULL;
-    return 1;
+    return nullptr;
   }
+  auto entry = std::make_unique<Entry>();
   entry->ParseFromString(res);
-  return 0;
+  return entry;
 }
 
 bool RaftLog::GetLastLogTermAndIndex(uint64_t* last_log_term, uint64_t* last_log_index) {
