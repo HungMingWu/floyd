@@ -34,10 +34,10 @@ class Logger;
  * fencing token is not part of raft, fencing token is used for implementing distributed lock
  * static const std::string kFencingToken = "FENCINGTOKEN";
  */
-class RaftMeta {
+class RaftMeta final {
  public:
-  RaftMeta(rocksdb::DB *db, Logger* info_log);
-  ~RaftMeta();
+  RaftMeta(rocksdb::DB *db);
+  ~RaftMeta() = default;
 
   void Init();
 
@@ -60,8 +60,6 @@ class RaftMeta {
  private:
   // db used to data that need to be persistent
   rocksdb::DB * const db_;
-  // used to debug
-  Logger* info_log_;
 
 };
 

@@ -25,7 +25,7 @@ class RaftLog {
   RaftLog(rocksdb::DB* db, Logger* info_log);
   ~RaftLog();
 
-  uint64_t Append(const std::vector<const Entry *> &entries);
+  uint64_t Append(const std::vector<Entry> &entries);
 
   std::unique_ptr<Entry> GetEntry(uint64_t index);
 

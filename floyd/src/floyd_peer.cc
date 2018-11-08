@@ -28,7 +28,7 @@
 
 namespace floyd {
 
-Peer::Peer(boost::asio::io_context& ctx_, std::string server, PeersSet* peers, FloydContext& context, FloydPrimary& primary, RaftMeta& raft_meta,
+Peer::Peer(boost::asio::io_context& ctx_, std::string server, PeersSet& peers, FloydContext& context, FloydPrimary& primary, RaftMeta& raft_meta,
     RaftLog& raft_log, ClientPool &pool, FloydApply& apply, const Options& options, Logger* info_log)
   : ctx(ctx_),
     peer_addr_(server),
@@ -53,7 +53,7 @@ bool Peer::CheckAndVote(uint64_t vote_term) {
 }
 
 void Peer::UpdatePeerInfo() {
-  for (auto& pt : (*peers_)) {
+  for (auto& pt : peers_) {
     pt.second->set_next_index(raft_log_.GetLastLogIndex() + 1);
     pt.second->set_match_index(0);
   }
@@ -157,7 +157,7 @@ void Peer::RequestVoteRPC() {
 
 uint64_t Peer::QuorumMatchIndex() {
   std::vector<uint64_t> values;
-  for (auto iter = peers_->begin(); iter != peers_->end(); iter++) {
+  for (auto iter = peers_.begin(); iter != peers_.end(); iter++) {
     if (iter->first == peer_addr_) {
       values.push_back(match_index_);
       continue;

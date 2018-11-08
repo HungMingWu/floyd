@@ -110,34 +110,36 @@ static void BuildAppendEntriesResponse(bool succ, uint64_t term,
   append_entries_res->set_success(succ);
 }
 
-static void BuildLogEntry(const CmdRequest& cmd, uint64_t current_term, Entry* entry) {
-  entry->set_term(current_term);
-  entry->set_key(cmd.kv_request().key());
-  entry->set_value(cmd.kv_request().value());
+static std::vector<Entry> BuildLogEntry(const CmdRequest& cmd, uint64_t current_term) {
+  Entry entry;
+  entry.set_term(current_term);
+  entry.set_key(cmd.kv_request().key());
+  entry.set_value(cmd.kv_request().value());
   if (cmd.type() == Type::kRead) {
-    entry->set_optype(Entry_OpType_kRead);
+    entry.set_optype(Entry_OpType_kRead);
   } else if (cmd.type() == Type::kWrite) {
-    entry->set_optype(Entry_OpType_kWrite);
+    entry.set_optype(Entry_OpType_kWrite);
   } else if (cmd.type() == Type::kDelete) {
-    entry->set_optype(Entry_OpType_kDelete);
+    entry.set_optype(Entry_OpType_kDelete);
   } else if (cmd.type() == Type::kTryLock) {
-    entry->set_optype(Entry_OpType_kTryLock);
-    entry->set_key(cmd.lock_request().name());
-    entry->set_holder(cmd.lock_request().holder());
-    entry->set_lease_end(cmd.lock_request().lease_end());
+    entry.set_optype(Entry_OpType_kTryLock);
+    entry.set_key(cmd.lock_request().name());
+    entry.set_holder(cmd.lock_request().holder());
+    entry.set_lease_end(cmd.lock_request().lease_end());
   } else if (cmd.type() == Type::kUnLock) {
-    entry->set_optype(Entry_OpType_kUnLock);
-    entry->set_key(cmd.lock_request().name());
-    entry->set_holder(cmd.lock_request().holder());
+    entry.set_optype(Entry_OpType_kUnLock);
+    entry.set_key(cmd.lock_request().name());
+    entry.set_holder(cmd.lock_request().holder());
   } else if (cmd.type() == Type::kAddServer) {
-    entry->set_optype(Entry_OpType_kAddServer);
-    entry->set_server(cmd.add_server_request().new_server());
+    entry.set_optype(Entry_OpType_kAddServer);
+    entry.set_server(cmd.add_server_request().new_server());
   } else if (cmd.type() == Type::kRemoveServer) {
-    entry->set_optype(Entry_OpType_kRemoveServer);
-    entry->set_server(cmd.remove_server_request().old_server());
+    entry.set_optype(Entry_OpType_kRemoveServer);
+    entry.set_server(cmd.remove_server_request().old_server());
   } else if (cmd.type() == Type::kGetAllServers) {
-    entry->set_optype(Entry_OpType_kGetAllServers);
+    entry.set_optype(Entry_OpType_kGetAllServers);
   }
+  return { entry };
 }
 
 static void BuildMembership(const std::vector<std::string>& opt_members,
@@ -213,7 +215,7 @@ void FloydImpl::AddNewPeer(const std::string& server) {
   if (peers_iter == peers_.end()) {
     LOGV(INFO_LEVEL, info_log_, "FloydImpl::ApplyAddMember server %s:%d add new peer thread %s",
         options_.local_ip.c_str(), options_.local_port, server.c_str());
-    Peer* pt = new Peer(ctx, server, &peers_, *context_, *primary_, *raft_meta_, *raft_log_,
+    Peer* pt = new Peer(ctx, server, peers_, *context_, *primary_, *raft_meta_, *raft_log_,
         *worker_client_pool_, *apply_, options_, info_log_);
     peers_.insert(std::pair<std::string, Peer*>(server, pt));
   }
@@ -237,7 +239,7 @@ int FloydImpl::InitPeers() {
   // peers_.clear();
   for (auto iter = context_->members.begin(); iter != context_->members.end(); iter++) {
     if (!IsSelf(*iter)) {
-      Peer* pt = new Peer(ctx, *iter, &peers_, *context_, *primary_, *raft_meta_, *raft_log_,
+      Peer* pt = new Peer(ctx, *iter, peers_, *context_, *primary_, *raft_meta_, *raft_log_,
           *worker_client_pool_, *apply_, options_, info_log_);
       peers_.insert(std::pair<std::string, Peer*>(*iter, pt));
     }
@@ -275,7 +277,7 @@ Status FloydImpl::Init() {
 
   // Recover Context
   raft_log_ = std::make_unique<RaftLog>(log_and_meta_, info_log_);
-  raft_meta_ = std::make_unique<RaftMeta>(log_and_meta_, info_log_);
+  raft_meta_ = std::make_unique<RaftMeta>(log_and_meta_);
   raft_meta_->Init();
   context_ = std::make_unique<FloydContext>(options_);
   context_->RecoverInit(*raft_meta_);
@@ -310,7 +312,7 @@ Status FloydImpl::Init() {
 
   // peers and primary refer to each other
   // Create PrimaryThread before Peers
-  primary_ = std::make_unique<FloydPrimary>(ctx, *context_, &peers_, *raft_meta_, options_, info_log_);
+  primary_ = std::make_unique<FloydPrimary>(ctx, *context_, peers_, *raft_meta_, options_, info_log_);
 
   // Start worker thread after Peers, because WorkerHandle will check peers
   worker_ = std::make_unique<FloydWorker>(options_.local_port, 1000, this);
@@ -506,13 +508,12 @@ bool FloydImpl::GetServerStatus(std::string* msg) {
 
 Status FloydImpl::DoCommand(const CmdRequest& request, CmdResponse *response) {
   // Execute if is leader
-  std::string leader_ip;
-  int leader_port;
+  auto [leader_ip, leader_port] = [this]
   {
-  std::lock_guard l(context_->global_mu);
-  leader_ip = context_->leader_ip;
-  leader_port = context_->leader_port;
-  }
+    std::lock_guard l(context_->global_mu);
+    return std::make_tuple(context_->leader_ip, context_->leader_port);
+  }();
+
   if (options_.local_ip == leader_ip && options_.local_port == leader_port) {
     return ExecuteCommand(request, response);
   } else if (leader_ip == "" || leader_port == 0) {
@@ -575,10 +576,7 @@ bool FloydImpl::DoGetServerStatus(CmdResponse_ServerStatus* res) {
 Status FloydImpl::ExecuteCommand(const CmdRequest& request,
                                  CmdResponse *response) {
   // Append entry local
-  std::vector<const Entry*> entries;
-  Entry entry;
-  BuildLogEntry(request, context_->current_term, &entry);
-  entries.push_back(&entry);
+  std::vector<Entry> entries = BuildLogEntry(request, context_->current_term);
   response->set_type(request.type());
   response->set_code(StatusCode::kError);
 
@@ -822,9 +820,9 @@ int FloydImpl::ReplyAppendEntries(const CmdRequest& request, CmdResponse* respon
     return -1;
   }
 
-  std::vector<const Entry*> entries;
+  std::vector<Entry> entries;
   for (int i = 0; i < append_entries.entries().size(); i++) {
-    entries.push_back(&append_entries.entries(i));
+    entries.push_back(append_entries.entries(i));
   }
   if (append_entries.entries().size() > 0) {
     LOGV(DEBUG_LEVEL, info_log_, "FloydImpl::ReplyAppendEntries: Leader %s:%d will append %u entries from "

@@ -27,7 +27,7 @@
 
 namespace floyd {
 
-FloydPrimary::FloydPrimary(boost::asio::io_context& ctx_, FloydContext& context, PeersSet* peers, RaftMeta& raft_meta,
+FloydPrimary::FloydPrimary(boost::asio::io_context& ctx_, FloydContext& context, PeersSet& peers, RaftMeta& raft_meta,
     const Options& options, Logger* info_log)
   : ctx(ctx_),
     timer(ctx),
@@ -121,7 +121,7 @@ void FloydPrimary::LaunchNewCommand() {
 // when adding task to peer thread, we can consider that this job have been in the network
 // even it is still in the peer thread's queue
 void FloydPrimary::NoticePeerTask(TaskType type) {
-  for (auto& peer : (*peers_)) {
+  for (auto& peer : peers_) {
     switch (type) {
     case kHeartBeat:
       LOGV(INFO_LEVEL, info_log_, "FloydPrimary::NoticePeerTask server %s:%d Add request Task to queue to %s at term %d",

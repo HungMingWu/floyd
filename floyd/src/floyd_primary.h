@@ -39,7 +39,7 @@ enum TaskType {
 
 class FloydPrimary final {
  public:
-  FloydPrimary(boost::asio::io_context& ctx_, FloydContext& context, PeersSet* peers, RaftMeta& raft_meta,
+  FloydPrimary(boost::asio::io_context& ctx_, FloydContext& context, PeersSet& peers, RaftMeta& raft_meta,
       const Options& options, Logger* info_log);
   ~FloydPrimary() = default;
 
@@ -48,7 +48,7 @@ class FloydPrimary final {
   boost::asio::io_context& ctx;
   boost::asio::system_timer timer;
   FloydContext& context_;
-  PeersSet* const peers_;
+  PeersSet& peers_;
   RaftMeta& raft_meta_;
   Options options_;
   Logger* const info_log_;

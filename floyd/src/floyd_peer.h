@@ -28,7 +28,7 @@ typedef std::map<std::string, std::unique_ptr<Peer>> PeersSet;
 
 class Peer final {
  public:
-  Peer(boost::asio::io_context& ctx_, std::string server, PeersSet *peers, FloydContext& context, FloydPrimary& primary, RaftMeta& raft_meta,
+  Peer(boost::asio::io_context& ctx_, std::string server, PeersSet& peers, FloydContext& context, FloydPrimary& primary, RaftMeta& raft_meta,
       RaftLog& raft_log, ClientPool &pool, FloydApply& apply, const Options& options, Logger* info_log);
   ~Peer() = default;
 
@@ -75,7 +75,7 @@ class Peer final {
 
   boost::asio::io_context& ctx;
   std::string peer_addr_;
-  PeersSet* const peers_;
+  PeersSet& peers_;
   FloydContext& context_;
   FloydPrimary& primary_;
   RaftMeta& raft_meta_;

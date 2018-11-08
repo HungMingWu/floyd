@@ -26,12 +26,9 @@ static const std::string kLastApplied = "APPLYINDEX";
  */
 static const std::string kFencingToken = "FENCINGTOKEN";
 
-RaftMeta::RaftMeta(rocksdb::DB* db, Logger* info_log)
-  : db_(db),
-    info_log_(info_log) {
-}
-
-RaftMeta::~RaftMeta() {
+RaftMeta::RaftMeta(rocksdb::DB* db)
+  : db_(db)
+{
 }
 
 void RaftMeta::Init() {

@@ -54,14 +54,14 @@ RaftLog::RaftLog(rocksdb::DB *db, Logger *info_log) :
 RaftLog::~RaftLog() {
 }
 
-uint64_t RaftLog::Append(const std::vector<const Entry *> &entries) {
+uint64_t RaftLog::Append(const std::vector<Entry> &entries) {
   std::lock_guard l(lli_mutex_);
   rocksdb::WriteBatch wb;
   LOGV(DEBUG_LEVEL, info_log_, "RaftLog::Append: entries.size %lld", entries.size());
   // try to commit entries in one batch
-  for (size_t i = 0; i < entries.size(); i++) {
+  for (const auto &entry : entries) {
     std::string buf;
-    entries[i]->SerializeToString(&buf);
+    entry.SerializeToString(&buf);
     last_log_index_++;
     wb.Put(UintToBitStr(last_log_index_), buf);
   }
