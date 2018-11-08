@@ -6,10 +6,11 @@
 #ifndef FLOYD_SRC_FLOYD_APPLY_H_
 #define FLOYD_SRC_FLOYD_APPLY_H_
 
+#include <boost/asio/ts/io_context.hpp>
+
 #include "floyd/src/floyd_context.h"
 
 #include "slash/include/slash_status.h"
-#include "pink/include/bg_thread.h"
 
 namespace floyd {
 
@@ -20,17 +21,15 @@ class RaftLog;
 class Logger;
 class FloydImpl;
 
-class FloydApply {
+class FloydApply final {
  public:
-  FloydApply(FloydContext& context, rocksdb::DB* db, RaftMeta& raft_meta,
+  FloydApply(boost::asio::io_context& ctx_, FloydContext& context, rocksdb::DB* db, RaftMeta& raft_meta,
       RaftLog& raft_log, FloydImpl* impl_, Logger* info_log); 
-  virtual ~FloydApply();
-  int Start();
-  int Stop();
+  ~FloydApply() = default;
   void ScheduleApply();
 
  private:
-  pink::BGThread bg_thread_;
+  boost::asio::io_context& ctx;
   FloydContext& context_;
   rocksdb::DB* const db_;
   /*
@@ -40,7 +39,6 @@ class FloydApply {
   RaftLog& raft_log_;
   FloydImpl* const impl_;
   Logger* const info_log_;
-  static void ApplyStateMachineWrapper(void* arg);
   void ApplyStateMachine();
   rocksdb::Status Apply(const Entry& log_entry);
   rocksdb::Status MembershipChange(const std::string& ip_port, bool add);

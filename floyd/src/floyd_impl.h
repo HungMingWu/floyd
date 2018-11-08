@@ -10,10 +10,10 @@
 #include <set>
 #include <utility>
 #include <map>
+#include <boost/asio/ts/io_context.hpp>
 
 #include "slash/include/slash_mutex.h"
 #include "slash/include/slash_status.h"
-#include "pink/include/bg_thread.h"
 
 #include "floyd/include/floyd.h"
 #include "floyd/include/floyd_options.h"
@@ -83,6 +83,7 @@ class FloydImpl : public Floyd {
   friend class FloydWorkerHandle;
   friend class Peer;
 
+  boost::asio::io_context ctx;
   rocksdb::DB* db_;
   // state machine db point
   // raft log

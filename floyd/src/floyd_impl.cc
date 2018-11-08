@@ -21,8 +21,8 @@
 #include "floyd/src/floyd_apply.h"
 #include "floyd/src/floyd_worker.h"
 #include "floyd/src/raft_log.h"
-#include "floyd/src/floyd_peer_thread.h"
-#include "floyd/src/floyd_primary_thread.h"
+#include "floyd/src/floyd_peer.h"
+#include "floyd/src/floyd_primary.h"
 #include "floyd/src/floyd_client_pool.h"
 #include "floyd/src/logger.h"
 #include "floyd/src/floyd.pb.h"
@@ -158,11 +158,6 @@ FloydImpl::FloydImpl(const Options& options)
 FloydImpl::~FloydImpl() {
   // worker will use floyd, delete worker first
   worker_->Stop();
-  primary_->Stop();
-  apply_->Stop();
-  for (auto& pt : peers_) {
-    pt.second->Stop();
-  }
   delete info_log_;
   delete db_;
   delete log_and_meta_;
@@ -218,10 +213,9 @@ void FloydImpl::AddNewPeer(const std::string& server) {
   if (peers_iter == peers_.end()) {
     LOGV(INFO_LEVEL, info_log_, "FloydImpl::ApplyAddMember server %s:%d add new peer thread %s",
         options_.local_ip.c_str(), options_.local_port, server.c_str());
-    Peer* pt = new Peer(server, &peers_, *context_, *primary_, *raft_meta_, *raft_log_,
+    Peer* pt = new Peer(ctx, server, &peers_, *context_, *primary_, *raft_meta_, *raft_log_,
         *worker_client_pool_, *apply_, options_, info_log_);
     peers_.insert(std::pair<std::string, Peer*>(server, pt));
-    pt->Start();
   }
 }
 
@@ -234,7 +228,6 @@ void FloydImpl::RemoveOutPeer(const std::string& server) {
   if (peers_iter != peers_.end()) {
     LOGV(INFO_LEVEL, info_log_, "FloydImpl::ApplyRemoveMember server %s:%d remove peer thread %s",
         options_.local_ip.c_str(), options_.local_port, server.c_str());
-    peers_iter->second->Stop();
     peers_.erase(peers_iter);
   }
 }
@@ -244,21 +237,12 @@ int FloydImpl::InitPeers() {
   // peers_.clear();
   for (auto iter = context_->members.begin(); iter != context_->members.end(); iter++) {
     if (!IsSelf(*iter)) {
-      Peer* pt = new Peer(*iter, &peers_, *context_, *primary_, *raft_meta_, *raft_log_,
+      Peer* pt = new Peer(ctx, *iter, &peers_, *context_, *primary_, *raft_meta_, *raft_log_,
           *worker_client_pool_, *apply_, options_, info_log_);
       peers_.insert(std::pair<std::string, Peer*>(*iter, pt));
     }
   }
 
-  // Start peer thread
-  int ret;
-  for (auto& pt : peers_) {
-    if ((ret = pt.second->Start()) != 0) {
-      LOGV(ERROR_LEVEL, info_log_, "FloydImpl::InitPeers FloydImpl peer thread to %s failed to "
-           " start, ret is %d", pt.first.c_str(), ret);
-      return ret;
-    }
-  }
   LOGV(INFO_LEVEL, info_log_, "FloydImpl::InitPeers Floyd start %d peer thread", peers_.size());
   return 0;
 }
@@ -326,7 +310,7 @@ Status FloydImpl::Init() {
 
   // peers and primary refer to each other
   // Create PrimaryThread before Peers
-  primary_ = std::make_unique<FloydPrimary>(*context_, &peers_, *raft_meta_, options_, info_log_);
+  primary_ = std::make_unique<FloydPrimary>(ctx, *context_, &peers_, *raft_meta_, options_, info_log_);
 
   // Start worker thread after Peers, because WorkerHandle will check peers
   worker_ = std::make_unique<FloydWorker>(options_.local_port, 1000, this);
@@ -336,21 +320,12 @@ Status FloydImpl::Init() {
     return Status::Corruption("failed to start worker, return " + std::to_string(ret));
   }
   // Apply thread should start at the last
-  apply_ = std::make_unique<FloydApply>(*context_, db_, *raft_meta_, *raft_log_, this, info_log_);
+  apply_ = std::make_unique<FloydApply>(ctx, *context_, db_, *raft_meta_, *raft_log_, this, info_log_);
 
   InitPeers();
 
-  // Set and Start PrimaryThread
-  // be careful:
-  // primary and every peer threads shared the peer threads
-  if ((ret = primary_->Start()) != 0) {
-    LOGV(ERROR_LEVEL, info_log_, "FloydImpl::Init FloydImpl primary thread failed to start, ret is %d", ret);
-    return Status::Corruption("failed to start primary thread, return " + std::to_string(ret));
-  }
   primary_->AddTask(kCheckLeader);
 
-  // we should start the apply thread at the last
-  apply_->Start();
   // test only
   // options_.Dump();
   LOGV(INFO_LEVEL, info_log_, "FloydImpl::Init Floyd started!\nOptions\n%s", options_.ToString().c_str());

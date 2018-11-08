@@ -8,9 +8,9 @@
 
 #include <string>
 #include <map>
+#include <boost/asio/ts/io_context.hpp>
 
 #include "slash/include/slash_status.h"
-#include "pink/include/bg_thread.h"
 
 #include "floyd/src/floyd_context.h"
 
@@ -26,14 +26,11 @@ class FloydApply;
 class Peer;
 typedef std::map<std::string, std::unique_ptr<Peer>> PeersSet;
 
-class Peer {
+class Peer final {
  public:
-  Peer(std::string server, PeersSet *peers, FloydContext& context, FloydPrimary& primary, RaftMeta& raft_meta,
+  Peer(boost::asio::io_context& ctx_, std::string server, PeersSet *peers, FloydContext& context, FloydPrimary& primary, RaftMeta& raft_meta,
       RaftLog& raft_log, ClientPool &pool, FloydApply& apply, const Options& options, Logger* info_log);
-  ~Peer();
-
-  int Start();
-  int Stop();
+  ~Peer() = default;
 
   // Apend Entries
   // call by other thread, put job to peer_thread's bg_thread_
@@ -46,10 +43,8 @@ class Peer {
    * RequestVoteRPC
    * the response to these two RPC at floyd_impl.h
    */
-  static void AppendEntriesRPCWrapper(void *arg);
   void AppendEntriesRPC();
   // Request Vote
-  static void RequestVoteRPCWrapper(void *arg);
   void RequestVoteRPC();
 
   uint64_t GetMatchIndex();
@@ -78,6 +73,7 @@ class Peer {
   void AdvanceLeaderCommitIndex();
   void UpdatePeerInfo();
 
+  boost::asio::io_context& ctx;
   std::string peer_addr_;
   PeersSet* const peers_;
   FloydContext& context_;
@@ -93,8 +89,6 @@ class Peer {
   std::atomic<uint64_t> next_index_;
   std::atomic<uint64_t> match_index_;
   uint64_t peer_last_op_time;
-
-  pink::BGThread bg_thread_;
 
   // No copying allowed
   Peer(const Peer&);

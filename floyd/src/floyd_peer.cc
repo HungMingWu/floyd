@@ -3,9 +3,10 @@
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
 
-#include "floyd/src/floyd_peer_thread.h"
+#include "floyd/src/floyd_peer.h"
 
 #include <google/protobuf/text_format.h>
+#include <boost/asio/ts/executor.hpp>
 
 #include <algorithm>
 #include <climits>
@@ -16,7 +17,7 @@
 #include "slash/include/slash_mutex.h"
 #include "slash/include/xdebug.h"
 
-#include "floyd/src/floyd_primary_thread.h"
+#include "floyd/src/floyd_primary.h"
 #include "floyd/src/floyd_context.h"
 #include "floyd/src/floyd_client_pool.h"
 #include "floyd/src/raft_log.h"
@@ -27,9 +28,10 @@
 
 namespace floyd {
 
-Peer::Peer(std::string server, PeersSet* peers, FloydContext& context, FloydPrimary& primary, RaftMeta& raft_meta,
+Peer::Peer(boost::asio::io_context& ctx_, std::string server, PeersSet* peers, FloydContext& context, FloydPrimary& primary, RaftMeta& raft_meta,
     RaftLog& raft_log, ClientPool &pool, FloydApply& apply, const Options& options, Logger* info_log)
-  : peer_addr_(server),
+  : ctx(ctx_),
+    peer_addr_(server),
     peers_(peers),
     context_(context),
     primary_(primary),
@@ -41,25 +43,9 @@ Peer::Peer(std::string server, PeersSet* peers, FloydContext& context, FloydPrim
     info_log_(info_log),
     next_index_(1),
     match_index_(0),
-    peer_last_op_time(0),
-    bg_thread_(1024 * 1024 * 256) {
+    peer_last_op_time(0) {
       next_index_ = raft_log_.GetLastLogIndex() + 1;
       match_index_ = raft_meta_.GetLastApplied();
-}
-
-int Peer::Start() {
-  std::string name = "P" + std::to_string(options_.local_port) + ":" + peer_addr_.substr(peer_addr_.find(':'));
-  bg_thread_.set_thread_name(name);
-  LOGV(INFO_LEVEL, info_log_, "Peer::Start Start a peer thread to %s", peer_addr_.c_str());
-  return bg_thread_.StartThread();
-}
-
-Peer::~Peer() {
-  LOGV(INFO_LEVEL, info_log_, "Peer::~Peer peer thread %s exit", peer_addr_.c_str());
-}
-
-int Peer::Stop() {
-  return bg_thread_.StopThread();
 }
 
 bool Peer::CheckAndVote(uint64_t vote_term) {
@@ -74,17 +60,7 @@ void Peer::UpdatePeerInfo() {
 }
 
 void Peer::AddRequestVoteTask() {
-  /*
-   * int timer_queue_size, queue_size;
-   * bg_thread_.QueueSize(&timer_queue_size, &queue_size);
-   * LOGV(INFO_LEVEL, info_log_, "Peer::AddRequestVoteTask peer_addr %s timer_queue size %d queue_size %d",
-   *     peer_addr_.c_str(),timer_queue_size, queue_size);
-   */
-  bg_thread_.Schedule(&RequestVoteRPCWrapper, this);
-}
-
-void Peer::RequestVoteRPCWrapper(void *arg) {
-  reinterpret_cast<Peer*>(arg)->RequestVoteRPC();
+  boost::asio::post(ctx, [this] { RequestVoteRPC(); });
 }
 
 void Peer::RequestVoteRPC() {
@@ -207,17 +183,7 @@ void Peer::AdvanceLeaderCommitIndex() {
 }
 
 void Peer::AddAppendEntriesTask() {
-  /*
-   * int timer_queue_size, queue_size;
-   * bg_thread_.QueueSize(&timer_queue_size, &queue_size);
-   * LOGV(INFO_LEVEL, info_log_, "Peer::AddAppendEntriesTask peer_addr %s timer_queue size %d queue_size %d",
-   *     peer_addr_.c_str(),timer_queue_size, queue_size);
-   */
-  bg_thread_.Schedule(&AppendEntriesRPCWrapper, this);
-}
-
-void Peer::AppendEntriesRPCWrapper(void *arg) {
-  reinterpret_cast<Peer*>(arg)->AppendEntriesRPC();
+  boost::asio::post(ctx, [this] { AppendEntriesRPC(); });
 }
 
 void Peer::AppendEntriesRPC() {

@@ -8,3 +8,6 @@
 [submodule "floyd/third/rocksdb"]
 	path = floyd/third/rocksdb
 	url = https://github.com/facebook/rocksdb.git
+[submodule "floyd/third/asio"]
+	path = floyd/third/asio
+	url = https://github.com/boostorg/asio

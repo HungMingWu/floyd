@@ -10,14 +10,14 @@
 #include <map>
 #include <vector>
 
+#include <boost/asio/ts/io_context.hpp>
+#include <boost/asio/ts/timer.hpp>
 
 #include "slash/include/env.h"
 #include "slash/include/slash_status.h"
-#include "slash/include/slash_mutex.h"
-#include "pink/include/bg_thread.h"
 
 #include "floyd/src/floyd_context.h"
-#include "floyd/src/floyd_peer_thread.h"
+#include "floyd/src/floyd_peer.h"
 
 namespace floyd {
 
@@ -37,16 +37,16 @@ enum TaskType {
   kNewCommand = 2
 };
 
-class FloydPrimary {
+class FloydPrimary final {
  public:
-  FloydPrimary(FloydContext& context, PeersSet* peers, RaftMeta& raft_meta,
+  FloydPrimary(boost::asio::io_context& ctx_, FloydContext& context, PeersSet* peers, RaftMeta& raft_meta,
       const Options& options, Logger* info_log);
-  virtual ~FloydPrimary();
+  ~FloydPrimary() = default;
 
-  int Start();
-  int Stop();
   void AddTask(TaskType type, bool is_delay = true);
  private:
+  boost::asio::io_context& ctx;
+  boost::asio::system_timer timer;
   FloydContext& context_;
   PeersSet* const peers_;
   RaftMeta& raft_meta_;
@@ -55,15 +55,11 @@ class FloydPrimary {
 
   std::atomic<uint64_t> reset_elect_leader_time_;
   std::atomic<uint64_t> reset_leader_heartbeat_time_;
-  pink::BGThread bg_thread_;
 
   // The Launch* work is done by floyd_peer_thread
   // Cron task
-  static void LaunchHeartBeatWrapper(void *arg);
   void LaunchHeartBeat();
-  static void LaunchCheckLeaderWrapper(void *arg);
   void LaunchCheckLeader();
-  static void LaunchNewCommandWrapper(void *arg);
   void LaunchNewCommand();
 
   void NoticePeerTask(TaskType type);

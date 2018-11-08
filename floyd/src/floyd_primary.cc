@@ -3,11 +3,12 @@
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
 
-#include "floyd/src/floyd_primary_thread.h"
+#include "floyd/src/floyd_primary.h"
 
 #include <stdlib.h>
 #include <time.h>
 #include <google/protobuf/text_format.h>
+#include <boost/asio/ts/executor.hpp> 
 
 #include <climits>
 #include <algorithm>
@@ -16,7 +17,6 @@
 #include "slash/include/env.h"
 #include "slash/include/slash_mutex.h"
 
-#include "floyd/src/floyd_peer_thread.h"
 #include "floyd/src/floyd_apply.h"
 #include "floyd/src/floyd_context.h"
 #include "floyd/src/floyd_client_pool.h"
@@ -27,26 +27,15 @@
 
 namespace floyd {
 
-FloydPrimary::FloydPrimary(FloydContext& context, PeersSet* peers, RaftMeta& raft_meta,
+FloydPrimary::FloydPrimary(boost::asio::io_context& ctx_, FloydContext& context, PeersSet* peers, RaftMeta& raft_meta,
     const Options& options, Logger* info_log)
-  : context_(context),
+  : ctx(ctx_),
+    timer(ctx),
+    context_(context),
     peers_(peers),
     raft_meta_(raft_meta),
     options_(options),
     info_log_(info_log) {
-}
-
-int FloydPrimary::Start() {
-  bg_thread_.set_thread_name("R:" + std::to_string(options_.local_port));
-  return bg_thread_.StartThread();
-}
-
-FloydPrimary::~FloydPrimary() {
-  LOGV(INFO_LEVEL, info_log_, "FloydPrimary::~FloydPrimary Primary thread exit");
-}
-
-int FloydPrimary::Stop() {
-  return bg_thread_.StopThread();
 }
 
 void FloydPrimary::AddTask(TaskType type, bool is_delay) {
@@ -59,31 +48,33 @@ void FloydPrimary::AddTask(TaskType type, bool is_delay) {
   switch (type) {
     case kHeartBeat:
       if (is_delay) {
-        uint64_t timeout = options_.heartbeat_us;
-        bg_thread_.DelaySchedule(timeout / 1000LL, LaunchHeartBeatWrapper, this);
+	timer.expires_after(std::chrono::microseconds(options_.heartbeat_us));
+	timer.async_wait([this](std::error_code ec) {
+	  if (ec) return;
+	  boost::asio::post(ctx, [this] { LaunchHeartBeat(); });
+	});
       } else {
-        bg_thread_.Schedule(LaunchHeartBeatWrapper, this);
+	boost::asio::post(ctx, [this] { LaunchHeartBeat(); });
       }
       break;
     case kCheckLeader:
       if (is_delay) {
-        uint64_t timeout = options_.check_leader_us;
-        bg_thread_.DelaySchedule(timeout / 1000LL, LaunchCheckLeaderWrapper, this);
+	timer.expires_after(std::chrono::microseconds(options_.check_leader_us));
+	timer.async_wait([this](std::error_code ec) {
+	  if (ec) return;
+	  boost::asio::post(ctx, [this] { LaunchCheckLeader(); });
+	});
       } else {
-        bg_thread_.Schedule(LaunchCheckLeaderWrapper, this);
+	boost::asio::post(ctx, [this] { LaunchCheckLeader(); });
       }
       break;
     case kNewCommand:
-      bg_thread_.Schedule(LaunchNewCommandWrapper, this);
+      boost::asio::post(ctx, [this] { LaunchNewCommand(); });
       break;
     default:
       LOGV(WARN_LEVEL, info_log_, "FloydPrimary:: unknown task type %d", type);
       break;
   }
-}
-
-void FloydPrimary::LaunchHeartBeatWrapper(void *arg) {
-  reinterpret_cast<FloydPrimary *>(arg)->LaunchHeartBeat();
 }
 
 void FloydPrimary::LaunchHeartBeat() {
@@ -92,10 +83,6 @@ void FloydPrimary::LaunchHeartBeat() {
     NoticePeerTask(kNewCommand);
     AddTask(kHeartBeat);
   }
-}
-
-void FloydPrimary::LaunchCheckLeaderWrapper(void *arg) {
-  reinterpret_cast<FloydPrimary *>(arg)->LaunchCheckLeader();
 }
 
 void FloydPrimary::LaunchCheckLeader() {
@@ -120,10 +107,6 @@ void FloydPrimary::LaunchCheckLeader() {
     }
   }
   AddTask(kCheckLeader);
-}
-
-void FloydPrimary::LaunchNewCommandWrapper(void *arg) {
-  reinterpret_cast<FloydPrimary *>(arg)->LaunchNewCommand();
 }
 
 void FloydPrimary::LaunchNewCommand() {

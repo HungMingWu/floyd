@@ -6,6 +6,7 @@
 #include "floyd/src/floyd_apply.h"
 
 #include <google/protobuf/text_format.h>
+#include <boost/asio/ts/executor.hpp>
 
 #include <unistd.h>
 #include <string>
@@ -21,28 +22,15 @@
 
 namespace floyd {
 
-FloydApply::FloydApply(FloydContext& context, rocksdb::DB* db, RaftMeta& raft_meta,
+FloydApply::FloydApply(boost::asio::io_context& ctx_, FloydContext& context, rocksdb::DB* db, RaftMeta& raft_meta,
     RaftLog& raft_log, FloydImpl* impl, Logger* info_log)
-  : bg_thread_(1024 * 1024 * 1024),
+  : ctx(ctx_),
     context_(context),
     db_(db),
     raft_meta_(raft_meta),
     raft_log_(raft_log),
     impl_(impl),
     info_log_(info_log) {
-}
-
-FloydApply::~FloydApply() {
-}
-
-int FloydApply::Start() {
-  bg_thread_.set_thread_name("A:" + std::to_string(impl_->GetLocalPort()));
-  bg_thread_.Schedule(ApplyStateMachineWrapper, this);
-  return bg_thread_.StartThread();
-}
-
-int FloydApply::Stop() {
-  return bg_thread_.StopThread();
 }
 
 void FloydApply::ScheduleApply() {
@@ -52,11 +40,7 @@ void FloydApply::ScheduleApply() {
    * LOGV(INFO_LEVEL, info_log_, "Peer::AddRequestVoteTask timer_queue size %d queue_size %d",
    *     timer_queue_size, queue_size);
    */
-  bg_thread_.Schedule(&ApplyStateMachineWrapper, this);
-}
-
-void FloydApply::ApplyStateMachineWrapper(void* arg) {
-  reinterpret_cast<FloydApply*>(arg)->ApplyStateMachine();
+  boost::asio::post(ctx, [this] { ApplyStateMachine(); });
 }
 
 void FloydApply::ApplyStateMachine() {
