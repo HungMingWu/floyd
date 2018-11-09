@@ -6,6 +6,9 @@
 #include "floyd/src/floyd_worker.h"
 
 #include <google/protobuf/text_format.h>
+#include <cereal/types/memory.hpp>
+#include <cereal/types/vector.hpp>
+#include <cereal/archives/binary.hpp>
 
 #include "floyd/src/floyd_impl.h"
 #include "floyd/src/logger.h"
@@ -30,68 +33,67 @@ FloydWorkerConn::FloydWorkerConn(int fd, const std::string& ip_port,
 FloydWorkerConn::~FloydWorkerConn() {}
 
 int FloydWorkerConn::DealMessage() {
-  if (!request_.ParseFromArray(rbuf_ + 4, header_len_)) {
-    std::string text_format;
-    google::protobuf::TextFormat::PrintToString(request_, &text_format);
-    LOGV(WARN_LEVEL, floyd_->info_log_, "FloydWorker: DealMessage failed:\n%s \n", text_format.c_str());
-    return -1;
-  }
+  std::string value;
+  std::istringstream is(value);
+  cereal::BinaryInputArchive archive(is);
+  archive(request_);
+
   response_.Clear();
   response_.set_type(Type::kRead);
   set_is_reply(true);
 
   // why we still need to deal with message that is not these type
-  switch (request_.type()) {
-    case Type::kWrite:
+  switch (request_.gettype()) {
+    case Type1::kWrite:
       response_.set_type(Type::kWrite);
       response_.set_code(StatusCode::kError);
       floyd_->DoCommand(request_, &response_);
       break;
-    case Type::kDelete:
+    case Type1::kDelete:
       response_.set_type(Type::kDelete);
       response_.set_code(StatusCode::kError);
       floyd_->DoCommand(request_, &response_);
       break;
-    case Type::kRead:
+    case Type1::kRead:
       response_.set_type(Type::kRead);
       response_.set_code(StatusCode::kError);
       floyd_->DoCommand(request_, &response_);
       break;
-    case Type::kTryLock:
+    case Type1::kTryLock:
       response_.set_type(Type::kTryLock);
       response_.set_code(StatusCode::kError);
       floyd_->DoCommand(request_, &response_);
       break;
-    case Type::kUnLock:
+    case Type1::kUnLock:
       response_.set_type(Type::kUnLock);
       response_.set_code(StatusCode::kError);
       floyd_->DoCommand(request_, &response_);
       break;
-    case Type::kServerStatus:
+    case Type1::kServerStatus:
       response_.set_type(Type::kRead);
       break;
       response_.set_type(Type::kServerStatus);
       response_.set_code(StatusCode::kError);
       LOGV(WARN_LEVEL, floyd_->info_log_, "obsolete command kServerStatus");
       break;
-    case Type::kAddServer:
+    case Type1::kAddServer:
       response_.set_type(Type::kAddServer);
       floyd_->DoCommand(request_, &response_);
       break;
-    case Type::kRemoveServer:
+    case Type1::kRemoveServer:
       response_.set_type(Type::kRemoveServer);
       floyd_->DoCommand(request_, &response_);
       break;
-    case Type::kGetAllServers:
+    case Type1::kGetAllServers:
       response_.set_type(Type::kGetAllServers);
       floyd_->DoCommand(request_, &response_);
       break;
-    case Type::kRequestVote:
+    case Type1::kRequestVote:
       response_.set_type(Type::kRequestVote);
       floyd_->ReplyRequestVote(request_, &response_);
       response_.set_code(StatusCode::kOk);
       break;
-    case Type::kAppendEntries:
+    case Type1::kAppendEntries:
       response_.set_type(Type::kAppendEntries);
       floyd_->ReplyAppendEntries(request_, &response_);
       response_.set_code(StatusCode::kOk);

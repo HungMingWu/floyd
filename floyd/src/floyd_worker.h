@@ -11,6 +11,7 @@
 #include "floyd/src/floyd.pb.h"
 #include "pink/include/server_thread.h"
 #include "pink/include/pb_conn.h"
+#include "floyd/src/floyd_ds.h"
 
 namespace floyd {
 

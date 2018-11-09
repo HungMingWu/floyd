@@ -11,3 +11,6 @@
 [submodule "floyd/third/asio"]
 	path = floyd/third/asio
 	url = https://github.com/boostorg/asio
+[submodule "floyd/third/cereal"]
+	path = floyd/third/cereal
+	url = https://github.com/USCiLab/cereal

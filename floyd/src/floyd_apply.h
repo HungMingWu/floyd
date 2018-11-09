@@ -20,6 +20,7 @@ class RaftMeta;
 class RaftLog;
 class Logger;
 class FloydImpl;
+class Entry;
 
 class FloydApply final {
  public:

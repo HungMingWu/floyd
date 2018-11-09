@@ -25,6 +25,7 @@
 #include "floyd/src/logger.h"
 #include "floyd/src/raft_meta.h"
 #include "floyd/src/floyd_apply.h"
+#include "floyd/src/floyd_ds.h"
 
 namespace floyd {
 
@@ -71,13 +72,13 @@ void Peer::RequestVoteRPC() {
   std::lock_guard l(context_.global_mu);
   raft_log_.GetLastLogTermAndIndex(&last_log_term, &last_log_index);
 
-  req.set_type(Type::kRequestVote);
-  CmdRequest_RequestVote* request_vote = req.mutable_request_vote();
-  request_vote->set_ip(options_.local_ip);
-  request_vote->set_port(options_.local_port);
-  request_vote->set_term(context_.current_term);
-  request_vote->set_last_log_term(last_log_term);
-  request_vote->set_last_log_index(last_log_index);
+  req.settype(Type1::kRequestVote);
+  auto &request_vote = req.getrequest_vote();
+  request_vote.setip(options_.local_ip);
+  request_vote.setport(options_.local_port);
+  request_vote.setterm(context_.current_term);
+  request_vote.setlast_log_term(last_log_term);
+  request_vote.setlast_log_index(last_log_index);
   LOGV(INFO_LEVEL, info_log_, "Peer::RequestVoteRPC server %s:%d Send RequestVoteRPC message to %s at term %d",
       options_.local_ip.c_str(), options_.local_port, peer_addr_.c_str(), context_.current_term);
   }
@@ -173,7 +174,6 @@ uint64_t Peer::QuorumMatchIndex() {
 // only leader will call AdvanceCommitIndex
 // follower only need set commit as leader's
 void Peer::AdvanceLeaderCommitIndex() {
-  Entry entry;
   uint64_t new_commit_index = QuorumMatchIndex();
   if (context_.commit_index < new_commit_index) {
     context_.commit_index = new_commit_index;
@@ -193,7 +193,7 @@ void Peer::AppendEntriesRPC() {
   uint64_t last_log_index = 0;
   uint64_t current_term = 0;
   CmdRequest req;
-  CmdRequest_AppendEntries* append_entries = req.mutable_append_entries();
+  auto &append_entries = req.getappend_entries();
   {
   std::lock_guard l(context_.global_mu);
   prev_log_index = next_index_ - 1;
@@ -212,25 +212,23 @@ void Peer::AppendEntriesRPC() {
       LOGV(WARN_LEVEL, info_log_, "Peer::AppendEntriesRPC: Get my(%s:%d) Entry index %llu "
           "not found", options_.local_ip.c_str(), options_.local_port, prev_log_index);
     } else {
-      prev_log_term = entry->term();
+      prev_log_term = entry->getterm();
     }
   }
   current_term = context_.current_term;
 
-  req.set_type(Type::kAppendEntries);
-  append_entries->set_ip(options_.local_ip);
-  append_entries->set_port(options_.local_port);
-  append_entries->set_term(current_term);
-  append_entries->set_prev_log_index(prev_log_index);
-  append_entries->set_prev_log_term(prev_log_term);
-  append_entries->set_leader_commit(context_.commit_index);
+  req.settype(Type1::kAppendEntries);
+  append_entries.setip(options_.local_ip);
+  append_entries.setport(options_.local_port);
+  append_entries.setterm(current_term);
+  append_entries.setprev_log_index(prev_log_index);
+  append_entries.setprev_log_term(prev_log_term);
+  append_entries.setleader_commit(context_.commit_index);
   }
 
   for (uint64_t index = next_index_; index <= last_log_index; index++) {
     if (auto tmp_entry = raft_log_.GetEntry(index); tmp_entry) {
-      // TODO(ba0tiao) how to avoid memory copy here
-      Entry *entry = append_entries->add_entries();
-      *entry = *tmp_entry;
+      append_entries.appendEntry(tmp_entry.value());
     } else {
       LOGV(WARN_LEVEL, info_log_, "Peer::AppendEntriesRPC: peer_addr %s can't get Entry "
           "from raft_log, index %lld", peer_addr_.c_str(), index);
@@ -238,8 +236,10 @@ void Peer::AppendEntriesRPC() {
     }
 
     num_entries++;
-    if (num_entries >= options_.append_entries_count_once
+    if (num_entries >= options_.append_entries_count_once) {
+#if 0
         || (uint64_t)append_entries->ByteSize() >= options_.append_entries_size_once) {
+#endif
       break;
     }
   }
@@ -289,7 +289,7 @@ void Peer::AppendEntriesRPC() {
         match_index_ = prev_log_index + num_entries;
         // only log entries from the leader's current term are committed
         // by counting replicas
-        if (append_entries->entries(num_entries - 1).term() == context_.current_term) {
+        if (append_entries.getentries()[num_entries - 1].getterm() == context_.current_term) {
           AdvanceLeaderCommitIndex();
           apply_.ScheduleApply();
         }

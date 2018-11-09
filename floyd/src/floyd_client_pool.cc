@@ -10,34 +10,35 @@
 #include "floyd/include/floyd_options.h"
 
 #include "slash/include/slash_string.h"
+#include "floyd/src/floyd_ds.h"
 
 namespace floyd {
 
 static std::string CmdType(const CmdRequest& cmd) {
   std::string ret;
-  switch (cmd.type()) {
-    case Type::kRead:
+  switch (cmd.gettype()) {
+    case Type1::kRead:
       ret = "Read";
       break;
-    case Type::kWrite:
+    case Type1::kWrite:
       ret = "Write";
       break;
-    case Type::kDelete:
+    case Type1::kDelete:
       ret = "Delete";
       break;
-    case Type::kTryLock:
+    case Type1::kTryLock:
       ret = "TryLock";
       break;
-    case Type::kUnLock:
+    case Type1::kUnLock:
       ret = "UnLock";
       break;
-    case Type::kRequestVote:
+    case Type1::kRequestVote:
       ret = "RequestVote";
       break;
-    case Type::kAppendEntries:
+    case Type1::kAppendEntries:
       ret = "AppendEntries";
       break;
-    case Type::kServerStatus:
+    case Type1::kServerStatus:
       ret = "ServerStatus";
       break;
     default:
@@ -72,12 +73,12 @@ Status ClientPool::SendAndRecv(const std::string& server, const CmdRequest& req,
   std::lock_guard l(client->mu);
   ret = UpHoldCli(client);
   if (!ret.ok()) {
-    if (req.type() == kAppendEntries) {
+    if (req.gettype() == Type1::kAppendEntries) {
       LOGV(WARN_LEVEL, info_log_, "ClientPool::SendAndRecv Server Connect to %s failed, error reason: %s"
           " Request type %s prev_log_index %lu prev_log_term %lu leader_commit %lu "
           "append entries size %d at term %d", server.c_str(), ret.ToString().c_str(),
-          CmdType(req).c_str(), req.append_entries().prev_log_index(), req.append_entries().prev_log_term(),
-          req.append_entries().leader_commit(), req.append_entries().entries().size(), req.append_entries().term());
+          CmdType(req).c_str(), req.getappend_entries().getprev_log_index(), req.getappend_entries().getprev_log_term(),
+          req.getappend_entries().getleader_commit(), req.getappend_entries().getentries().size(), req.getappend_entries().getterm());
     } else {
       LOGV(WARN_LEVEL, info_log_, "ClientPool::SendAndRecv Server Connect to %s failed, error reason: %s"
           " Request type %s", server.c_str(), ret.ToString().c_str(), CmdType(req).c_str());
@@ -89,12 +90,12 @@ Status ClientPool::SendAndRecv(const std::string& server, const CmdRequest& req,
 
   ret = cli->Send((void *)(&req));
   if (!ret.ok()) {
-    if (req.type() == kAppendEntries) {
+    if (req.gettype() == Type1::kAppendEntries) {
       LOGV(WARN_LEVEL, info_log_, "ClientPool::SendAndRecv Server Send to %s failed, error reason: %s"
           " Request type %s prev_log_index %lu prev_log_term %lu leader_commit %lu "
           "append entries size %d at term %d", server.c_str(), ret.ToString().c_str(),
-          CmdType(req).c_str(), req.append_entries().prev_log_index(), req.append_entries().prev_log_term(),
-          req.append_entries().leader_commit(), req.append_entries().entries().size(), req.append_entries().term());
+          CmdType(req).c_str(), req.getappend_entries().getprev_log_index(), req.getappend_entries().getprev_log_term(),
+          req.getappend_entries().getleader_commit(), req.getappend_entries().getentries().size(), req.getappend_entries().getterm());
     } else {
       LOGV(WARN_LEVEL, info_log_, "ClientPool::SendAndRecv Server Send to %s failed, error reason: %s"
           " Request type %s", server.c_str(), ret.ToString().c_str(), CmdType(req).c_str());
@@ -106,12 +107,12 @@ Status ClientPool::SendAndRecv(const std::string& server, const CmdRequest& req,
 
   ret = cli->Recv(res);
   if (!ret.ok()) {
-    if (req.type() == kAppendEntries) {
+    if (req.gettype() == Type1::kAppendEntries) {
       LOGV(WARN_LEVEL, info_log_, "ClientPool::SendAndRecv Server Recv to %s failed, error reason: %s"
           " Request type %s prev_log_index %lu prev_log_term %lu leader_commit %lu "
           "append entries size %d at term %d", server.c_str(), ret.ToString().c_str(),
-          CmdType(req).c_str(), req.append_entries().prev_log_index(), req.append_entries().prev_log_term(),
-          req.append_entries().leader_commit(), req.append_entries().entries().size(), req.append_entries().term());
+          CmdType(req).c_str(), req.getappend_entries().getprev_log_index(), req.getappend_entries().getprev_log_term(),
+          req.getappend_entries().getleader_commit(), req.getappend_entries().getentries().size(), req.getappend_entries().getterm());
     } else {
       LOGV(WARN_LEVEL, info_log_, "ClientPool::SendAndRecv Server Recv to %s failed, error reason: %s"
           " Request type %s", server.c_str(), ret.ToString().c_str(), CmdType(req).c_str());

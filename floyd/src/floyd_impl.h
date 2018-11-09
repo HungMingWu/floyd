@@ -33,6 +33,7 @@ class FloydWorkerConn;
 class FloydContext;
 class Logger;
 class CmdRequest;
+class CmdRequest;
 class CmdResponse;
 class CmdResponse_ServerStatus;
 

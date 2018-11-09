@@ -7,6 +7,9 @@
 
 #include <google/protobuf/text_format.h>
 #include <boost/asio/ts/executor.hpp>
+#include <cereal/types/memory.hpp>
+#include <cereal/types/vector.hpp>
+#include <cereal/archives/binary.hpp>
 
 #include <unistd.h>
 #include <string>
@@ -19,6 +22,7 @@
 #include "floyd/src/raft_meta.h"
 #include "floyd/src/raft_log.h"
 #include "floyd/src/floyd_impl.h"
+#include "floyd/src/floyd_ds.h"
 
 namespace floyd {
 
@@ -60,7 +64,7 @@ void FloydApply::ApplyStateMachine() {
     auto log_entry = raft_log_.GetEntry(last_applied);
     // TODO: we need change the s type
     // since the Apply may not operate rocksdb
-    rocksdb::Status s = Apply(*log_entry);
+    rocksdb::Status s = Apply(log_entry.value());
     if (!s.ok()) {
       LOGV(WARN_LEVEL, info_log_, "FloydApply::ApplyStateMachine: Apply log entry failed, at: %d, error: %s",
           last_applied, s.ToString().c_str());
@@ -83,84 +87,92 @@ rocksdb::Status FloydApply::Apply(const Entry& entry) {
   // we need to return the ret carefully
   // the FloydApply::ApplyStateMachine need use the ret to judge
   // whether consume this successfully
-  switch (entry.optype()) {
-    case Entry_OpType_kWrite:
-      ret = db_->Put(rocksdb::WriteOptions(), entry.key(), entry.value());
+  switch (entry.getoptype()) {
+    case Entry::OpType::kWrite:
+      ret = db_->Put(rocksdb::WriteOptions(), entry.getkey(), entry.getvalue());
       LOGV(DEBUG_LEVEL, info_log_, "FloydApply::Apply %s, key(%s)",
-          ret.ToString().c_str(), entry.key().c_str());
+          ret.ToString().c_str(), entry.getkey().c_str());
       break;
-    case Entry_OpType_kDelete:
-      ret = db_->Delete(rocksdb::WriteOptions(), entry.key());
+    case Entry::OpType::kDelete:
+      ret = db_->Delete(rocksdb::WriteOptions(), entry.getkey());
       break;
-    case Entry_OpType_kRead:
+    case Entry::OpType::kRead:
       ret = rocksdb::Status::OK();
       break;
-    case Entry_OpType_kTryLock:
-      ret = db_->Get(rocksdb::ReadOptions(), entry.key(), &val);
+    case Entry::OpType::kTryLock:
+      ret = db_->Get(rocksdb::ReadOptions(), entry.getkey(), &val);
       if (ret.ok()) {
-        lock.ParseFromString(val);
-        if (lock.lease_end() < slash::NowMicros()) {
+        std::istringstream is(val);
+        cereal::BinaryInputArchive archive(is);
+        archive(lock);
+        if (lock.getlease_end() < slash::NowMicros()) {
           LOGV(INFO_LEVEL, info_log_, "FloydApply::Apply Trylock Success, name %s holder %s, "
               "but the lock has been locked by %s, and right now it is timeout",
-              entry.key().c_str(), entry.holder().c_str(), lock.holder().c_str());
-          lock.set_holder(entry.holder());
-          lock.set_lease_end(entry.lease_end());
-          lock.SerializeToString(&val);
-          ret = db_->Put(rocksdb::WriteOptions(), entry.key(), val);
+              entry.getkey().c_str(), entry.getholder().c_str(), lock.getholder().c_str());
+          lock.setholder(entry.getholder());
+          lock.setlease_end(entry.getlease_end());
+          std::ostringstream os;
+          cereal::BinaryOutputArchive archive(os);
+          archive(lock);
+          ret = db_->Put(rocksdb::WriteOptions(), entry.getkey(), os.str());
         } else {
           ret = rocksdb::Status::OK();
         }
       } else if (ret.IsNotFound()) {
-        lock.set_holder(entry.holder());
-        lock.set_lease_end(entry.lease_end());
-        lock.SerializeToString(&val);
-        ret = db_->Put(rocksdb::WriteOptions(), entry.key(), val);
+        lock.setholder(entry.getholder());
+        lock.setlease_end(entry.getlease_end());
+        std::ostringstream os;
+        cereal::BinaryOutputArchive archive(os);
+        archive(lock);
+        ret = db_->Put(rocksdb::WriteOptions(), entry.getkey(), os.str());
       } else {
         LOGV(WARN_LEVEL, info_log_, "FloydImpl::Apply Trylock Error operate db error, name %s holder %s",
-            entry.key().c_str(), entry.holder().c_str());
+            entry.getkey().c_str(), entry.getholder().c_str());
       }
       break;
-    case Entry_OpType_kUnLock:
-      ret = db_->Get(rocksdb::ReadOptions(), entry.key(), &val);
+    case Entry::OpType::kUnLock:
+      ret = db_->Get(rocksdb::ReadOptions(), entry.getkey(), &val);
       if (ret.ok()) {
-        lock.ParseFromString(val);
-        if (lock.holder() != entry.holder()) {
+        std::istringstream is(val);
+        cereal::BinaryInputArchive archive(is);
+        archive(lock);
+        if (lock.getholder() != entry.getholder()) {
           LOGV(INFO_LEVEL, info_log_, "FloydApply::Apply Warning UnLock an lock holded by other, name %s holder %s, origin holder %s",
-              entry.key().c_str(), entry.holder().c_str(), lock.holder().c_str());
-        } else if (lock.lease_end() < slash::NowMicros()) {
+              entry.getkey().c_str(), entry.getholder().c_str(), lock.getholder().c_str());
+        } else if (lock.getlease_end() < slash::NowMicros()) {
           LOGV(INFO_LEVEL, info_log_, "FloydImpl::Apply UnLock an lock which is expired, name %s holder %s",
-              entry.key().c_str(), entry.holder().c_str(), lock.holder().c_str());
+              entry.getkey().c_str(), entry.getholder().c_str(), lock.getholder().c_str());
         } else {
-          ret = db_->Delete(rocksdb::WriteOptions(), entry.key());
+          ret = db_->Delete(rocksdb::WriteOptions(), entry.getkey());
         }
       } else if (ret.IsNotFound()) {
         LOGV(INFO_LEVEL, info_log_, "FloydApply::Apply Warning UnLock an dosen't exist lock, name %s holder %s",
-            entry.key().c_str(), entry.holder().c_str());
+            entry.getkey().c_str(), entry.getholder().c_str());
         ret = rocksdb::Status::OK();
       } else {
         LOGV(WARN_LEVEL, info_log_, "FloydApply::Apply UnLock Error, operate db error, name %s holder %s",
-            entry.key().c_str(), entry.holder().c_str());
+            entry.getkey().c_str(), entry.getholder().c_str());
       }
       break;
-    case Entry_OpType_kAddServer:
-      ret = MembershipChange(entry.server(), true);
+    case Entry::OpType::kAddServer:
+      ret = MembershipChange(entry.getserver(), true);
       if (ret.ok()) {
-        context_.members.insert(entry.server());
-        impl_->AddNewPeer(entry.server());
+        context_.members.insert(entry.getserver());
+        impl_->AddNewPeer(entry.getserver());
       }
       LOGV(INFO_LEVEL, info_log_, "FloydApply::Apply Add server %s to cluster",
-          entry.server().c_str());
+          entry.getserver().c_str());
       break;
-    case Entry_OpType_kRemoveServer:
-      ret = MembershipChange(entry.server(), false);
+    case Entry::OpType::kRemoveServer:
+      ret = MembershipChange(entry.getserver(), false);
       if (ret.ok()) {
-        context_.members.erase(entry.server());
-        impl_->RemoveOutPeer(entry.server());
+        context_.members.erase(entry.getserver());
+        impl_->RemoveOutPeer(entry.getserver());
       }
       LOGV(INFO_LEVEL, info_log_, "FloydApply::Apply Remove server %s to cluster",
-          entry.server().c_str());
+          entry.getserver().c_str());
       break;
-    case Entry_OpType_kGetAllServers:
+    case Entry::OpType::kGetAllServers:
       ret = rocksdb::Status::OK();
       break;
     default:
@@ -172,39 +184,28 @@ rocksdb::Status FloydApply::Apply(const Entry& entry) {
 rocksdb::Status FloydApply::MembershipChange(const std::string& ip_port,
     bool add) {
   std::string value;
-  Membership members;
   rocksdb::Status ret = db_->Get(rocksdb::ReadOptions(),
       kMemberConfigKey, &value);
   if (!ret.ok()) {
     return ret;
   }
+  Membership123 members;
+  std::istringstream is(value);
+  cereal::BinaryInputArchive iarchive(is);
+  iarchive(members);
 
-  if(!members.ParseFromString(value)) {
-    return rocksdb::Status::Corruption("Parse failed");
-  }
-  int count = members.nodes_size();
-  for (int i = 0; i < count; i++) {
-    if (members.nodes(i) == ip_port) {
-      if (add) {
-        return rocksdb::Status::OK();  // Already in
-      }
-      // Remove Server
-      if (i != count - 1) {
-        std::string *nptr = members.mutable_nodes(i);
-        *nptr = members.nodes(count - 1);
-      }
-      members.mutable_nodes()->RemoveLast();
-    }
-  }
-
+  bool exist = members.exists(ip_port);
   if (add) {
-    members.add_nodes(ip_port);
+    if (exist) return rocksdb::Status::OK();  // Already in
+    else members.add_nodes(ip_port);
+  } else {
+    if (exist) members.remove_nodes(ip_port); // Remove Server
   }
 
-  if (!members.SerializeToString(&value)) {
-    return rocksdb::Status::Corruption("Serialize failed");
-  }
-  return db_->Put(rocksdb::WriteOptions(), kMemberConfigKey, value);
+  std::ostringstream os;
+  cereal::BinaryOutputArchive oarchive(os);
+  oarchive(members);
+  return db_->Put(rocksdb::WriteOptions(), kMemberConfigKey, os.str());
 }
 
 } // namespace floyd

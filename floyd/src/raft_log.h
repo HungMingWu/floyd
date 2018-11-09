@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 #include <mutex>
-
+#include <optional>
 #include "rocksdb/db.h"
 
 namespace floyd {
@@ -27,7 +27,7 @@ class RaftLog {
 
   uint64_t Append(const std::vector<Entry> &entries);
 
-  std::unique_ptr<Entry> GetEntry(uint64_t index);
+  std::optional<Entry> GetEntry(uint64_t index);
 
   uint64_t GetLastLogIndex();
   bool GetLastLogTermAndIndex(uint64_t* last_log_term, uint64_t* last_log_index);

@@ -6,6 +6,8 @@
 #include "floyd/src/raft_log.h"
 
 #include <google/protobuf/text_format.h>
+#include <cereal/types/memory.hpp>
+#include <cereal/archives/binary.hpp>
 
 #include <vector>
 #include <string>
@@ -17,6 +19,7 @@
 #include "floyd/src/floyd.pb.h"
 #include "floyd/src/logger.h"
 #include "floyd/include/floyd_options.h"
+#include "floyd/src/floyd_ds.h"
 
 namespace floyd {
 extern std::string UintToBitStr(const uint64_t num) {
@@ -60,10 +63,11 @@ uint64_t RaftLog::Append(const std::vector<Entry> &entries) {
   LOGV(DEBUG_LEVEL, info_log_, "RaftLog::Append: entries.size %lld", entries.size());
   // try to commit entries in one batch
   for (const auto &entry : entries) {
-    std::string buf;
-    entry.SerializeToString(&buf);
+    std::ostringstream os;
+    cereal::BinaryOutputArchive archive(os);
+    archive(entry);
     last_log_index_++;
-    wb.Put(UintToBitStr(last_log_index_), buf);
+    wb.Put(UintToBitStr(last_log_index_), os.str());
   }
   rocksdb::Status s;
   s = db_->Write(rocksdb::WriteOptions(), &wb);
@@ -79,17 +83,19 @@ uint64_t RaftLog::GetLastLogIndex() {
   return last_log_index_;
 }
 
-std::unique_ptr<Entry> RaftLog::GetEntry(const uint64_t index) {
+std::optional<Entry> RaftLog::GetEntry(const uint64_t index) {
   std::lock_guard l(lli_mutex_);
   std::string buf = UintToBitStr(index);
   std::string res;
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), buf, &res);
   if (s.IsNotFound()) {
     LOGV(ERROR_LEVEL, info_log_, "RaftLog::GetEntry: GetEntry not found, index is %lld", index);
-    return nullptr;
+    return std::nullopt;
   }
-  auto entry = std::make_unique<Entry>();
-  entry->ParseFromString(res);
+  Entry entry;
+  std::istringstream is(res);
+  cereal::BinaryInputArchive archive(is);
+  archive(entry);
   return entry;
 }
 
@@ -108,9 +114,11 @@ bool RaftLog::GetLastLogTermAndIndex(uint64_t* last_log_term, uint64_t* last_log
     return true;
   }
   Entry entry;
-  entry.ParseFromString(buf);
+  std::istringstream is(buf);
+  cereal::BinaryInputArchive archive(is);
+  archive(entry);
   *last_log_index = last_log_index_;
-  *last_log_term = entry.term();
+  *last_log_term = entry.getterm();
   return true;
 }
 

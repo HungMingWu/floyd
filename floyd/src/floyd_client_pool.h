@@ -21,6 +21,7 @@ namespace floyd {
 using slash::Status;
 
 class Logger;
+class CmdRequest;
 
 struct Client {
   pink::PinkCli* cli;
