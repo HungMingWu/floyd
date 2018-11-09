@@ -5,8 +5,6 @@
 
 #include "floyd/src/floyd_impl.h"
 
-#include <google/protobuf/text_format.h>
-
 #include <utility>
 #include <vector>
 #include <algorithm>
@@ -28,120 +26,119 @@
 #include "floyd/src/floyd_primary.h"
 #include "floyd/src/floyd_client_pool.h"
 #include "floyd/src/logger.h"
-#include "floyd/src/floyd.pb.h"
 #include "floyd/src/raft_meta.h"
 #include "floyd/src/floyd_ds.h"
 
 namespace floyd {
 
 static void BuildReadRequest(const std::string& key, CmdRequest* cmd) {
-  cmd->settype(Type1::kRead);
-  auto &kv_request = cmd->getkv_request();
-  kv_request.setkey(key);
+  cmd->type = Type::kRead;
+  auto &kv_request = cmd->kv_request;
+  kv_request.key = key;
 }
 
 static void BuildReadResponse(const std::string &key, const std::string &value,
-                              StatusCode code, CmdResponse* response) {
-  response->set_code(code);
-  CmdResponse_KvResponse* kv_response = response->mutable_kv_response();
-  if (code == StatusCode::kOk) {
-    kv_response->set_value(value);
+                              CmdResponse::StatusCode code, CmdResponse *response) {
+  response->code = code;
+  auto &kv_response = response->kv_response;
+  if (code == CmdResponse::StatusCode::kOk) {
+    kv_response.value = value;
   }
 }
 
 static void BuildWriteRequest(const std::string& key,
                               const std::string& value, CmdRequest* cmd) {
-  cmd->settype(Type1::kWrite);
-  auto &kv_request = cmd->getkv_request();
-  kv_request.setkey(key);
-  kv_request.setvalue(value);
+  cmd->type = Type::kWrite;
+  auto &kv_request = cmd->kv_request;
+  kv_request.key = key;;
+  kv_request.value = value;
 }
 
 static void BuildDeleteRequest(const std::string& key, CmdRequest* cmd) {
-  cmd->settype(Type1::kDelete);
-  auto &kv_request = cmd->getkv_request();
-  kv_request.setkey(key);
+  cmd->type = Type::kDelete;
+  auto &kv_request = cmd->kv_request;
+  kv_request.key = key;
 }
 
 static void BuildTryLockRequest(const std::string& name, const std::string& holder, uint64_t ttl,
                               CmdRequest* cmd) {
-  cmd->settype(Type1::kTryLock);
-  auto &lock_request = cmd->getlock_request();
-  lock_request.setname(name);
-  lock_request.setholder(holder);
-  lock_request.setlease_end(slash::NowMicros() + ttl * 1000);
+  cmd->type = Type::kTryLock;
+  auto &lock_request = cmd->lock_request;
+  lock_request.name = name;
+  lock_request.holder = holder;
+  lock_request.lease_end = slash::NowMicros() + ttl * 1000;
 }
 
 static void BuildUnLockRequest(const std::string& name, const std::string& holder,
                               CmdRequest* cmd) {
-  cmd->settype(Type1::kUnLock);
-  auto &lock_request = cmd->getlock_request();
-  lock_request.setname(name);
-  lock_request.setholder(holder);
+  cmd->type = Type::kUnLock;
+  auto &lock_request = cmd->lock_request;
+  lock_request.name = name;
+  lock_request.holder = holder;
 }
 
 static void BuildAddServerRequest(const std::string& new_server, CmdRequest* cmd) {
-  cmd->settype(Type1::kAddServer);
-  auto &add_server_request = cmd->getadd_server_request();
-  add_server_request.setnew_server(new_server);
+  cmd->type = Type::kAddServer;
+  auto &add_server_request = cmd->add_server_request;
+  add_server_request.new_server = new_server;
 }
 
 static void BuildRemoveServerRequest(const std::string& old_server, CmdRequest* cmd) {
-  cmd->settype(Type1::kRemoveServer);
-  auto &remove_server_request = cmd->getremove_server_request();
-  remove_server_request.setold_server(old_server);
+  cmd->type = Type::kRemoveServer;
+  auto &remove_server_request = cmd->remove_server_request;
+  remove_server_request.old_server = old_server;
 }
 
 static void BuildGetAllServersRequest(CmdRequest* cmd) {
-  cmd->settype(Type1::kGetAllServers);
+  cmd->type = Type::kGetAllServers;
 }
 
 static void BuildRequestVoteResponse(uint64_t term, bool granted,
                                      CmdResponse* response) {
-  response->set_type(Type::kRequestVote);
-  CmdResponse_RequestVoteResponse* request_vote_res = response->mutable_request_vote_res();
-  request_vote_res->set_term(term);
-  request_vote_res->set_vote_granted(granted);
+  response->type = Type::kRequestVote;
+  auto &request_vote_res = response->request_vote_res;
+  request_vote_res.term = term;
+  request_vote_res.vote_granted = granted;
 }
 
 static void BuildAppendEntriesResponse(bool succ, uint64_t term,
                                        uint64_t log_index,
                                        CmdResponse* response) {
-  response->set_type(Type::kAppendEntries);
-  CmdResponse_AppendEntriesResponse* append_entries_res = response->mutable_append_entries_res();
-  append_entries_res->set_term(term);
-  append_entries_res->set_last_log_index(log_index);
-  append_entries_res->set_success(succ);
+  response->type = Type::kAppendEntries;
+  auto &append_entries_res = response->append_entries_res;
+  append_entries_res.term = term;
+  append_entries_res.last_log_index = log_index;
+  append_entries_res.success = succ;
 }
 
 static std::vector<Entry> BuildLogEntry(const CmdRequest& cmd, uint64_t current_term) {
   Entry entry;
-  entry.setterm(current_term);
-  entry.setkey(cmd.getkv_request().getkey());
-  entry.setvalue(cmd.getkv_request().getvalue());
-  if (cmd.gettype() == Type1::kRead) {
-    entry.setoptype(Entry::OpType::kRead);
-  } else if (cmd.gettype() == Type1::kWrite) {
-    entry.setoptype(Entry::OpType::kWrite);
-  } else if (cmd.gettype() == Type1::kDelete) {
-    entry.setoptype(Entry::OpType::kDelete);
-  } else if (cmd.gettype() == Type1::kTryLock) {
-    entry.setoptype(Entry::OpType::kTryLock);
-    entry.setkey(cmd.getlock_request().getname());
-    entry.setholder(cmd.getlock_request().getholder());
-    entry.setlease_end(cmd.getlock_request().getlease_end());
-  } else if (cmd.gettype() == Type1::kUnLock) {
-    entry.setoptype(Entry::OpType::kUnLock);
-    entry.setkey(cmd.getlock_request().getname());
-    entry.setholder(cmd.getlock_request().getholder());
-  } else if (cmd.gettype() == Type1::kAddServer) {
-    entry.setoptype(Entry::OpType::kAddServer);
-    entry.setserver(cmd.getadd_server_request().getnew_server());
-  } else if (cmd.gettype() == Type1::kRemoveServer) {
-    entry.setoptype(Entry::OpType::kRemoveServer);
-    entry.setserver(cmd.getremove_server_request().getold_server());
-  } else if (cmd.gettype() == Type1::kGetAllServers) {
-    entry.setoptype(Entry::OpType::kGetAllServers);
+  entry.term = current_term;
+  entry.key = cmd.kv_request.key;
+  entry.value = cmd.kv_request.value;
+  if (cmd.type == Type::kRead) {
+    entry.optype = Entry::OpType::kRead;
+  } else if (cmd.type == Type::kWrite) {
+    entry.optype = Entry::OpType::kWrite;
+  } else if (cmd.type == Type::kDelete) {
+    entry.optype = Entry::OpType::kDelete;
+  } else if (cmd.type == Type::kTryLock) {
+    entry.optype = Entry::OpType::kTryLock;
+    entry.key = cmd.lock_request.name;
+    entry.holder = cmd.lock_request.holder;
+    entry.lease_end = cmd.lock_request.lease_end;
+  } else if (cmd.type == Type::kUnLock) {
+    entry.optype = Entry::OpType::kUnLock;
+    entry.key = cmd.lock_request.name;
+    entry.holder = cmd.lock_request.holder;
+  } else if (cmd.type == Type::kAddServer) {
+    entry.optype = Entry::OpType::kAddServer;
+    entry.server = cmd.add_server_request.new_server;
+  } else if (cmd.type == Type::kRemoveServer) {
+    entry.optype = Entry::OpType::kRemoveServer;
+    entry.server = cmd.remove_server_request.old_server;
+  } else if (cmd.type == Type::kGetAllServers) {
+    entry.optype = Entry::OpType::kGetAllServers;
   }
   return { entry };
 }
@@ -282,7 +279,7 @@ Status FloydImpl::Init() {
   std::string mval;
   s = db_->Get(rocksdb::ReadOptions(), kMemberConfigKey, &mval);
   if (s.ok()) {
-    Membership123 db_members;
+    Membership db_members;
     std::istringstream is(mval);
     cereal::BinaryInputArchive archive(is);
     archive(db_members);
@@ -292,7 +289,7 @@ Status FloydImpl::Init() {
       context_->members.insert(node);
     }
   } else {
-    Membership123 db_members(options_.members);
+    Membership db_members(options_.members);
     std::ostringstream os;
     cereal::BinaryOutputArchive archive(os);
     archive(db_members);
@@ -355,7 +352,7 @@ Status FloydImpl::Write(const std::string& key, const std::string& value) {
   if (!s.ok()) {
     return s;
   }
-  if (response.code() == StatusCode::kOk) {
+  if (response.code == CmdResponse::StatusCode::kOk) {
     return Status::OK();
   }
   return Status::Corruption("Write Error");
@@ -369,7 +366,7 @@ Status FloydImpl::Delete(const std::string& key) {
   if (!s.ok()) {
     return s;
   }
-  if (response.code() == StatusCode::kOk) {
+  if (response.code == CmdResponse::StatusCode::kOk) {
     return Status::OK();
   }
   return Status::Corruption("Delete Error");
@@ -383,10 +380,10 @@ Status FloydImpl::Read(const std::string& key, std::string* value) {
   if (!s.ok()) {
     return s;
   }
-  if (response.code() == StatusCode::kOk) {
-    *value = response.kv_response().value();
+  if (response.code == CmdResponse::StatusCode::kOk) {
+    *value = response.kv_response.value;
     return Status::OK();
-  } else if (response.code() == StatusCode::kNotFound) {
+  } else if (response.code == CmdResponse::StatusCode::kNotFound) {
     return Status::NotFound("not found the key");
   } else {
     return Status::Corruption("Read Error");
@@ -411,7 +408,7 @@ Status FloydImpl::TryLock(const std::string& name, const std::string& holder, ui
   if (!s.ok()) {
     return s;
   }
-  if (response.code() == StatusCode::kOk) {
+  if (response.code == CmdResponse::StatusCode::kOk) {
     return Status::OK();
   }
   return Status::Corruption("Lock Error");
@@ -425,7 +422,7 @@ Status FloydImpl::UnLock(const std::string& name, const std::string& holder) {
   if (!s.ok()) {
     return s;
   }
-  if (response.code() == StatusCode::kOk) {
+  if (response.code == CmdResponse::StatusCode::kOk) {
     return Status::OK();
   }
   return Status::Corruption("UnLock Error");
@@ -439,7 +436,7 @@ Status FloydImpl::AddServer(const std::string& new_server) {
   if (!s.ok()) {
     return s;
   }
-  if (response.code() == StatusCode::kOk) {
+  if (response.code == CmdResponse::StatusCode::kOk) {
     return Status::OK();
   }
 
@@ -454,7 +451,7 @@ Status FloydImpl::RemoveServer(const std::string& old_server) {
   if (!s.ok()) {
     return s;
   }
-  if (response.code() == StatusCode::kOk) {
+  if (response.code == CmdResponse::StatusCode::kOk) {
     return Status::OK();
   }
 
@@ -469,10 +466,10 @@ Status FloydImpl::GetAllServers(std::set<std::string>* nodes) {
   if (!s.ok()) {
     return s;
   }
-  if (response.code() == StatusCode::kOk) {
+  if (response.code == CmdResponse::StatusCode::kOk) {
     nodes->clear();
-    for (int i = 0; i < response.all_servers().nodes_size(); i++) {
-      nodes->insert(response.all_servers().nodes(i));
+    for (const auto &node : response.all_servers.nodes) {
+      nodes->insert(node);
     }
     return Status::OK();
   }
@@ -482,7 +479,7 @@ Status FloydImpl::GetAllServers(std::set<std::string>* nodes) {
 
 bool FloydImpl::GetServerStatus(std::string* msg) {
   LOGV(DEBUG_LEVEL, info_log_, "FloydImpl::GetServerStatus start");
-  CmdResponse_ServerStatus server_status;
+  CmdResponse::ServerStatus server_status;
   {
   std::lock_guard l(context_->global_mu);
   DoGetServerStatus(&server_status);
@@ -492,11 +489,11 @@ bool FloydImpl::GetServerStatus(std::string* msg) {
   snprintf (str, sizeof(str),
             "      Node           |    Role    | Term |      Leader      |      VoteFor      | LastLogTerm | LastLogIdx | CommitIndex | LastApplied |\n"
             "%15s:%-6d%10s%7lu%14s:%-6d%14s:%-6d%10lu%13lu%14lu%13lu\n",
-            options_.local_ip.c_str(), options_.local_port, server_status.role().c_str(), server_status.term(),
-            server_status.leader_ip().c_str(), server_status.leader_port(),
-            server_status.voted_for_ip().c_str(), server_status.voted_for_port(),
-            server_status.last_log_term(), server_status.last_log_index(), server_status.commit_index(),
-            server_status.last_applied());
+            options_.local_ip.c_str(), options_.local_port, server_status.role.c_str(), server_status.term,
+            server_status.leader_ip.c_str(), server_status.leader_port,
+            server_status.voted_for_ip.c_str(), server_status.voted_for_port,
+            server_status.last_log_term, server_status.last_log_index, server_status.commit_index,
+            server_status.last_applied);
 
   msg->clear();
   msg->append(str);
@@ -522,7 +519,7 @@ Status FloydImpl::DoCommand(const CmdRequest& request, CmdResponse *response) {
       request, response);
 }
 
-bool FloydImpl::DoGetServerStatus(CmdResponse_ServerStatus* res) {
+bool FloydImpl::DoGetServerStatus(CmdResponse::ServerStatus* res) {
   std::string role_msg;
   switch (context_->role) {
     case Role::kFollower:
@@ -536,37 +533,37 @@ bool FloydImpl::DoGetServerStatus(CmdResponse_ServerStatus* res) {
       break;
   }
 
-  res->set_term(context_->current_term);
-  res->set_commit_index(context_->commit_index);
-  res->set_role(role_msg);
+  res->term = context_->current_term;
+  res->commit_index = context_->commit_index;
+  res->role = role_msg;
 
   std::string ip;
   int port;
   ip = context_->leader_ip;
   port = context_->leader_port;
   if (ip.empty()) {
-    res->set_leader_ip("null");
+    res->leader_ip = "null";
   } else {
-    res->set_leader_ip(ip);
+    res->leader_ip = ip;
   }
-  res->set_leader_port(port);
+  res->leader_port = port;
 
   ip = context_->voted_for_ip;
   port = context_->voted_for_port;
   if (ip.empty()) {
-    res->set_voted_for_ip("null");
+    res->voted_for_ip = "null";
   } else {
-    res->set_voted_for_ip(ip);
+    res->voted_for_ip = ip;
   }
-  res->set_voted_for_port(port);
+  res->voted_for_port = port;
 
   uint64_t last_log_index;
   uint64_t last_log_term;
   raft_log_->GetLastLogTermAndIndex(&last_log_term, &last_log_index);
 
-  res->set_last_log_term(last_log_term);
-  res->set_last_log_index(last_log_index);
-  res->set_last_applied(raft_meta_->GetLastApplied());
+  res->last_log_term = last_log_term;
+  res->last_log_index = last_log_index;
+  res->last_applied = raft_meta_->GetLastApplied();
   return true;
 }
 
@@ -574,8 +571,8 @@ Status FloydImpl::ExecuteCommand(const CmdRequest& request,
                                  CmdResponse *response) {
   // Append entry local
   std::vector<Entry> entries = BuildLogEntry(request, context_->current_term);
-  response->set_type((floyd::Type)request.gettype());
-  response->set_code(StatusCode::kError);
+  response->type = request.type;
+  response->code = CmdResponse::StatusCode::kError;
 
   uint64_t last_log_index = raft_log_->Append(entries);
   if (last_log_index <= 0) {
@@ -604,62 +601,64 @@ Status FloydImpl::ExecuteCommand(const CmdRequest& request,
   std::string value;
   rocksdb::Status rs;
   Lock lock;
-  switch (request.gettype()) {
-    case Type1::kWrite:
-      response->set_code(StatusCode::kOk);
+  switch (request.type) {
+    case Type::kWrite:
+      response->code = CmdResponse::StatusCode::kOk;
       break;
-    case Type1::kDelete:
-      response->set_code(StatusCode::kOk);
+    case Type::kDelete:
+      response->code = CmdResponse::StatusCode::kOk;
       break;
-    case Type1::kRead:
-      rs = db_->Get(rocksdb::ReadOptions(), request.getkv_request().getkey(), &value);
+    case Type::kRead:
+      rs = db_->Get(rocksdb::ReadOptions(), request.kv_request.key, &value);
       if (rs.ok()) {
-        BuildReadResponse(request.getkv_request().getkey(), value, StatusCode::kOk, response);
+        BuildReadResponse(request.kv_request.key, value, CmdResponse::StatusCode::kOk, response);
       } else if (rs.IsNotFound()) {
-        BuildReadResponse(request.getkv_request().getkey(), value, StatusCode::kNotFound, response);
+        BuildReadResponse(request.kv_request.key, value, CmdResponse::StatusCode::kNotFound, response);
       } else {
-        BuildReadResponse(request.getkv_request().getkey(), value, StatusCode::kError, response);
+        BuildReadResponse(request.kv_request.key, value, CmdResponse::StatusCode::kError, response);
         return Status::Corruption("get key error");
       }
       LOGV(DEBUG_LEVEL, info_log_, "FloydImpl::ExecuteCommand Read %s, key(%s) value(%s)",
-           rs.ToString().c_str(), request.getkv_request().getkey().c_str(), value.c_str());
+           rs.ToString().c_str(), request.kv_request.key.c_str(), value.c_str());
       break;
-    case Type1::kTryLock:
-      rs = db_->Get(rocksdb::ReadOptions(), request.getlock_request().getname(), &value);
+    case Type::kTryLock:
+      rs = db_->Get(rocksdb::ReadOptions(), request.lock_request.name, &value);
       if (rs.ok()) {
         std::istringstream is(value);
         cereal::BinaryInputArchive archive(is);
         archive(lock);
-        if (lock.getholder() == request.getlock_request().getholder() && lock.getlease_end() == request.getlock_request().getlease_end()) {
-          response->set_code(StatusCode::kOk);
+        if (lock.holder == request.lock_request.holder && lock.lease_end == request.lock_request.lease_end) {
+          response->code = CmdResponse::StatusCode::kOk;
         }
       } else {
-        response->set_code(StatusCode::kLocked);
+        response->code = CmdResponse::StatusCode::kLocked;
       }
       break;
-    case Type1::kUnLock:
-      rs = db_->Get(rocksdb::ReadOptions(), request.getlock_request().getname(), &value);
+    case Type::kUnLock:
+      rs = db_->Get(rocksdb::ReadOptions(), request.lock_request.name, &value);
       if (rs.IsNotFound()) {
-        response->set_code(StatusCode::kOk);
+        response->code = CmdResponse::StatusCode::kOk;
       } else {
-        response->set_code(StatusCode::kLocked);
+        response->code = CmdResponse::StatusCode::kLocked;
       }
       break;
-    case Type1::kAddServer:
-      response->set_code(StatusCode::kOk);
+    case Type::kAddServer:
+      response->code = CmdResponse::StatusCode::kOk;
       break;
-    case Type1::kRemoveServer:
-      response->set_code(StatusCode::kOk);
+    case Type::kRemoveServer:
+      response->code = CmdResponse::StatusCode::kOk;
       break;
-    case Type1::kGetAllServers:
+    case Type::kGetAllServers:
       rs = db_->Get(rocksdb::ReadOptions(), kMemberConfigKey, &value);
       if (!rs.ok()) {
         return Status::Corruption(rs.ToString());
       }
-      if(!response->mutable_all_servers()->ParseFromString(value)) {
-        return Status::Corruption("Parse failed");
+      {
+	std::istringstream is(value);
+  	cereal::BinaryInputArchive archive(is);
+        archive(response->all_servers);
       }
-      response->set_code(StatusCode::kOk);
+      response->code = CmdResponse::StatusCode::kOk;
       break;
     default:
       return Status::Corruption("Unknown request type");
@@ -670,14 +669,14 @@ Status FloydImpl::ExecuteCommand(const CmdRequest& request,
 int FloydImpl::ReplyRequestVote(const CmdRequest& request, CmdResponse* response) {
   std::lock_guard l(context_->global_mu);
   bool granted = false;
-  const auto &request_vote = request.getrequest_vote();
+  const auto &request_vote = request.request_vote;
   LOGV(DEBUG_LEVEL, info_log_, "FloydImpl::ReplyRequestVote: my_term=%lu request.term=%lu",
-       context_->current_term, request_vote.getterm());
+       context_->current_term, request_vote.term);
   /*
    * If RPC request or response contains term T > currentTerm: set currentTerm = T, convert to follower (5.1)
    */
-  if (request_vote.getterm() > context_->current_term) {
-    context_->BecomeFollower(request_vote.getterm());
+  if (request_vote.term > context_->current_term) {
+    context_->BecomeFollower(request_vote.term);
     context_->voted_for_ip.clear();
     context_->voted_for_port = 0;
     raft_meta_->SetCurrentTerm(context_->current_term);
@@ -685,9 +684,9 @@ int FloydImpl::ReplyRequestVote(const CmdRequest& request, CmdResponse* response
     raft_meta_->SetVotedForPort(context_->voted_for_port);
   }
   // if caller's term smaller than my term, then I will notice him
-  if (request_vote.getterm() < context_->current_term) {
+  if (request_vote.term < context_->current_term) {
     LOGV(INFO_LEVEL, info_log_, "FloydImpl::ReplyRequestVote: Leader %s:%d term %lu is smaller than my %s:%d current term %lu",
-        request_vote.getip().c_str(), request_vote.getport(), request_vote.getterm(), options_.local_ip.c_str(), options_.local_port,
+        request_vote.ip.c_str(), request_vote.port, request_vote.term, options_.local_ip.c_str(), options_.local_port,
         context_->current_term);
     BuildRequestVoteResponse(context_->current_term, granted, response);
     return -1;
@@ -697,13 +696,13 @@ int FloydImpl::ReplyRequestVote(const CmdRequest& request, CmdResponse* response
   raft_log_->GetLastLogTermAndIndex(&my_last_log_term, &my_last_log_index);
   // if votedfor is null or candidateId, and candidated's log is at least as up-to-date
   // as receiver's log, grant vote
-  if ((request_vote.getlast_log_term() < my_last_log_term) ||
-      ((request_vote.getlast_log_term() == my_last_log_term) && (request_vote.getlast_log_index() < my_last_log_index))) {
+  if ((request_vote.last_log_term < my_last_log_term) ||
+      ((request_vote.last_log_term == my_last_log_term) && (request_vote.last_log_index < my_last_log_index))) {
     LOGV(INFO_LEVEL, info_log_, "FloydImpl::ReplyRequestVote: Leader %s:%d last_log_term %lu is smaller than my(%s:%d) last_log_term term %lu,"
         " or Leader's last log term equal to my last_log_term, but Leader's last_log_index %lu is smaller than my last_log_index %lu,"
         "my current_term is %lu",
-        request_vote.getip().c_str(), request_vote.getport(), request_vote.getlast_log_term(), options_.local_ip.c_str(), options_.local_port,
-        my_last_log_term, request_vote.getlast_log_index(), my_last_log_index,context_->current_term);
+        request_vote.ip.c_str(), request_vote.port, request_vote.last_log_term, options_.local_ip.c_str(), options_.local_port,
+        my_last_log_term, request_vote.last_log_index, my_last_log_index,context_->current_term);
     BuildRequestVoteResponse(context_->current_term, granted, response);
     return -1;
   }
@@ -711,20 +710,20 @@ int FloydImpl::ReplyRequestVote(const CmdRequest& request, CmdResponse* response
   if (!context_->voted_for_ip.empty() || context_->voted_for_port != 0) {
     LOGV(INFO_LEVEL, info_log_, "FloydImpl::ReplyRequestVote: I %s:%d have voted for %s:%d in this term %lu",
         options_.local_ip.c_str(), options_.local_port, context_->voted_for_ip.c_str(), 
-        context_->voted_for_port, request_vote.getterm());
+        context_->voted_for_port, request_vote.term);
     BuildRequestVoteResponse(context_->current_term, granted, response);
     return -1;
   }
   LOGV(INFO_LEVEL, info_log_, "FloydImpl::ReplyRequestVote: Receive Request Vote from %s:%d, "
       "Become Follower with current_term_(%lu) and new_term(%lu)"
-      " commit_index(%lu) last_applied(%lu)", request_vote.getip().c_str(), request_vote.getport(),
-      context_->current_term, request_vote.getlast_log_term(), my_last_log_index, context_->last_applied.load());
+      " commit_index(%lu) last_applied(%lu)", request_vote.ip.c_str(), request_vote.port,
+      context_->current_term, request_vote.last_log_term, my_last_log_index, context_->last_applied.load());
 
   // Peer ask my vote with it's ip, port, log_term and log_index
   // Got my vote
   granted = true;
-  context_->voted_for_ip = request_vote.getip();
-  context_->voted_for_port = request_vote.getport();
+  context_->voted_for_ip = request_vote.ip;
+  context_->voted_for_port = request_vote.port;
   raft_meta_->SetVotedForIp(context_->voted_for_ip);
   raft_meta_->SetVotedForPort(context_->voted_for_port);
 
@@ -748,104 +747,104 @@ bool FloydImpl::AdvanceFollowerCommitIndex(uint64_t leader_commit) {
 
 int FloydImpl::ReplyAppendEntries(const CmdRequest& request, CmdResponse* response) {
   bool success = false;
-  const auto &append_entries = request.getappend_entries();
+  const auto &append_entries = request.append_entries;
   std::lock_guard l(context_->global_mu);
   // update last_op_time to avoid another leader election
   context_->last_op_time = slash::NowMicros();
   // Ignore stale term
   // if the append entries leader's term is smaller than my current term, then the caller must an older leader
-  if (append_entries.getterm() < context_->current_term) {
+  if (append_entries.term < context_->current_term) {
     LOGV(INFO_LEVEL, info_log_, "FloydImpl::ReplyAppendEntries: Leader %s:%d term %lu is smaller than my %s:%d current term %lu",
-        append_entries.getip().c_str(), append_entries.getport(), append_entries.getterm(), options_.local_ip.c_str(), options_.local_port,
+        append_entries.ip.c_str(), append_entries.port, append_entries.term, options_.local_ip.c_str(), options_.local_port,
         context_->current_term);
     BuildAppendEntriesResponse(success, context_->current_term, raft_log_->GetLastLogIndex(), response);
     return -1;
-  } else if ((append_entries.getterm() > context_->current_term) 
-      || (append_entries.getterm() == context_->current_term && 
+  } else if ((append_entries.term > context_->current_term) 
+      || (append_entries.term == context_->current_term && 
         (context_->role == kCandidate || (context_->role == kFollower && context_->leader_ip == "")))) {
     LOGV(INFO_LEVEL, info_log_, "FloydImpl::ReplyAppendEntries: Leader %s:%d term %lu is larger than my %s:%d current term %lu, "
         "or leader term is equal to my current term, my role is %d, leader is [%s:%d]",
-        append_entries.getip().c_str(), append_entries.getport(), append_entries.getterm(), options_.local_ip.c_str(), options_.local_port,
+        append_entries.ip.c_str(), append_entries.port, append_entries.term, options_.local_ip.c_str(), options_.local_port,
         context_->current_term, context_->role, context_->leader_ip.c_str(), context_->leader_port);
-    context_->BecomeFollower(append_entries.getterm(),
-        append_entries.getip(), append_entries.getport());
-    context_->voted_for_ip = append_entries.getip();
-    context_->voted_for_port = append_entries.getport();
+    context_->BecomeFollower(append_entries.term,
+        append_entries.ip, append_entries.port);
+    context_->voted_for_ip = append_entries.ip;
+    context_->voted_for_port = append_entries.port;
     raft_meta_->SetCurrentTerm(context_->current_term);
     raft_meta_->SetVotedForIp(context_->voted_for_ip);
     raft_meta_->SetVotedForPort(context_->voted_for_port);
   }
 
-  if (append_entries.getprev_log_index() > raft_log_->GetLastLogIndex()) {
+  if (append_entries.prev_log_index > raft_log_->GetLastLogIndex()) {
     LOGV(INFO_LEVEL, info_log_, "FloydImpl::ReplyAppendEntries: Leader %s:%d prev_log_index %lu is larger than my %s:%d last_log_index %lu",
-        append_entries.getip().c_str(), append_entries.getport(), append_entries.getprev_log_index(), options_.local_ip.c_str(), options_.local_port,
+        append_entries.ip.c_str(), append_entries.port, append_entries.prev_log_index, options_.local_ip.c_str(), options_.local_port,
         raft_log_->GetLastLogIndex());
     BuildAppendEntriesResponse(success, context_->current_term, raft_log_->GetLastLogIndex(), response);
     return -1;
   }
 
   // Append entry
-  if (append_entries.getprev_log_index() < raft_log_->GetLastLogIndex()) {
+  if (append_entries.prev_log_index < raft_log_->GetLastLogIndex()) {
     LOGV(WARN_LEVEL, info_log_, "FloydImpl::ReplyAppendEtries: Leader %s:%d prev_log_index(%lu, %lu) is smaller than"
-        " my last_log_index %lu, truncate suffix from %lu", append_entries.getip().c_str(), append_entries.getport(),
-        append_entries.getprev_log_term(), append_entries.getprev_log_index(), raft_log_->GetLastLogIndex(),
-        append_entries.getprev_log_index() + 1);
-    raft_log_->TruncateSuffix(append_entries.getprev_log_index() + 1);
+        " my last_log_index %lu, truncate suffix from %lu", append_entries.ip.c_str(), append_entries.port,
+        append_entries.prev_log_term, append_entries.prev_log_index, raft_log_->GetLastLogIndex(),
+        append_entries.prev_log_index + 1);
+    raft_log_->TruncateSuffix(append_entries.prev_log_index + 1);
   }
 
   // we compare peer's prev index and term with my last log index and term
   uint64_t my_last_log_term = 0;
   LOGV(DEBUG_LEVEL, info_log_, "FloydImpl::ReplyAppendEntries "
-      "prev_log_index: %lu\n", append_entries.getprev_log_index());
-  if (append_entries.getprev_log_index() == 0) {
+      "prev_log_index: %lu\n", append_entries.prev_log_index);
+  if (append_entries.prev_log_index == 0) {
     my_last_log_term = 0;
-  } else if (auto entry = raft_log_->GetEntry(append_entries.getprev_log_index()); entry) {
-    my_last_log_term = entry->getterm();
+  } else if (auto entry = raft_log_->GetEntry(append_entries.prev_log_index); entry) {
+    my_last_log_term = entry->term;
   } else {
     LOGV(WARN_LEVEL, info_log_, "FloydImple::ReplyAppentries: can't "
-        "get Entry from raft_log prev_log_index %llu", append_entries.getprev_log_index());
+        "get Entry from raft_log prev_log_index %llu", append_entries.prev_log_index);
     BuildAppendEntriesResponse(success, context_->current_term, raft_log_->GetLastLogIndex(), response);
     return -1;
   }
 
-  if (append_entries.getprev_log_term() != my_last_log_term) {
+  if (append_entries.prev_log_term != my_last_log_term) {
     LOGV(WARN_LEVEL, info_log_, "FloydImpl::ReplyAppentries: leader %s:%d pre_log(%lu, %lu)'s term don't match with"
-         " my log(%lu, %lu) term, truncate my log from %lu", append_entries.getip().c_str(), append_entries.getport(),
-         append_entries.getprev_log_term(), append_entries.getprev_log_index(), my_last_log_term, raft_log_->GetLastLogIndex(),
-         append_entries.getprev_log_index());
+         " my log(%lu, %lu) term, truncate my log from %lu", append_entries.ip.c_str(), append_entries.port,
+         append_entries.prev_log_term, append_entries.prev_log_index, my_last_log_term, raft_log_->GetLastLogIndex(),
+         append_entries.prev_log_index);
     // TruncateSuffix [prev_log_index, last_log_index)
-    raft_log_->TruncateSuffix(append_entries.getprev_log_index());
+    raft_log_->TruncateSuffix(append_entries.prev_log_index);
     BuildAppendEntriesResponse(success, context_->current_term, raft_log_->GetLastLogIndex(), response);
     return -1;
   }
 
-  auto entries = append_entries.getentries();
-  if (append_entries.getentries().size() > 0) {
+  auto entries = append_entries.entries;
+  if (append_entries.entries.size() > 0) {
     LOGV(DEBUG_LEVEL, info_log_, "FloydImpl::ReplyAppendEntries: Leader %s:%d will append %u entries from "
-         " prev_log_index %lu", append_entries.getip().c_str(), append_entries.getport(),
-         append_entries.getentries().size(), append_entries.getprev_log_index());
+         " prev_log_index %lu", append_entries.ip.c_str(), append_entries.port,
+         append_entries.entries.size(), append_entries.prev_log_index);
     if (raft_log_->Append(entries) <= 0) {
       LOGV(ERROR_LEVEL, info_log_, "FloydImpl::ReplyAppendEntries: Leader %s:%d ppend %u entries from "
-          " prev_log_index %lu error at term %lu", append_entries.getip().c_str(), append_entries.getport(),
-          append_entries.getentries().size(), append_entries.getprev_log_index(), append_entries.getterm());
+          " prev_log_index %lu error at term %lu", append_entries.ip.c_str(), append_entries.port,
+          append_entries.entries.size(), append_entries.prev_log_index, append_entries.term);
       BuildAppendEntriesResponse(success, context_->current_term, raft_log_->GetLastLogIndex(), response);
       return -1;
     }
   } else {
     LOGV(INFO_LEVEL, info_log_, "FloydImpl::ReplyAppendEntries: Receive PingPong AppendEntries from %s:%d at term %lu",
-        append_entries.getip().c_str(), append_entries.getport(), append_entries.getterm());
+        append_entries.ip.c_str(), append_entries.port, append_entries.term);
   }
-  if (append_entries.getleader_commit() != context_->commit_index) {
-    AdvanceFollowerCommitIndex(append_entries.getleader_commit());
+  if (append_entries.leader_commit != context_->commit_index) {
+    AdvanceFollowerCommitIndex(append_entries.leader_commit);
     apply_->ScheduleApply();
   }
   success = true;
   // only when follower successfully do appendentries, we will update commit index
   LOGV(DEBUG_LEVEL, info_log_, "FloydImpl::ReplyAppendEntries server %s:%d Apply %d entries from Leader %s:%d"
       " prev_log_index %lu, leader commit %lu at term %lu", options_.local_ip.c_str(),
-      options_.local_port, append_entries.getentries().size(), append_entries.getip().c_str(),
-      append_entries.getport(), append_entries.getprev_log_index(), append_entries.getleader_commit(),
-      append_entries.getterm());
+      options_.local_port, append_entries.entries.size(), append_entries.ip.c_str(),
+      append_entries.port, append_entries.prev_log_index, append_entries.leader_commit,
+      append_entries.term);
   BuildAppendEntriesResponse(success, context_->current_term, raft_log_->GetLastLogIndex(), response);
   return 0;
 }

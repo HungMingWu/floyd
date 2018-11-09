@@ -6,8 +6,6 @@
 #ifndef FLOYD_SRC_FLOYD_CLIENT_POOL_H_
 #define FLOYD_SRC_FLOYD_CLIENT_POOL_H_
 
-#include "floyd/src/floyd.pb.h"
-
 #include <vector>
 #include <string>
 #include <map>
@@ -22,6 +20,7 @@ using slash::Status;
 
 class Logger;
 class CmdRequest;
+class CmdResponse;
 
 struct Client {
   pink::PinkCli* cli;

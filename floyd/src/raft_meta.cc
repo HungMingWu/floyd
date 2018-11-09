@@ -10,7 +10,6 @@
 #include "rocksdb/status.h"
 
 #include "floyd/src/logger.h"
-#include "floyd/src/floyd.pb.h"
 #include "slash/include/env.h"
 #include "slash/include/xdebug.h"
 

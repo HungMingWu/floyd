@@ -5,7 +5,6 @@
 
 #include "floyd/src/floyd_worker.h"
 
-#include <google/protobuf/text_format.h>
 #include <cereal/types/memory.hpp>
 #include <cereal/types/vector.hpp>
 #include <cereal/archives/binary.hpp>
@@ -38,72 +37,70 @@ int FloydWorkerConn::DealMessage() {
   cereal::BinaryInputArchive archive(is);
   archive(request_);
 
-  response_.Clear();
-  response_.set_type(Type::kRead);
+  response_.type = Type::kRead;
   set_is_reply(true);
 
   // why we still need to deal with message that is not these type
-  switch (request_.gettype()) {
-    case Type1::kWrite:
-      response_.set_type(Type::kWrite);
-      response_.set_code(StatusCode::kError);
+  switch (request_.type) {
+    case Type::kWrite:
+      response_.type = Type::kWrite;
+      response_.code = CmdResponse::StatusCode::kError;
       floyd_->DoCommand(request_, &response_);
       break;
-    case Type1::kDelete:
-      response_.set_type(Type::kDelete);
-      response_.set_code(StatusCode::kError);
+    case Type::kDelete:
+      response_.type = Type::kDelete;
+      response_.code = CmdResponse::StatusCode::kError;
       floyd_->DoCommand(request_, &response_);
       break;
-    case Type1::kRead:
-      response_.set_type(Type::kRead);
-      response_.set_code(StatusCode::kError);
+    case Type::kRead:
+      response_.type = Type::kRead;
+      response_.code = CmdResponse::StatusCode::kError;
       floyd_->DoCommand(request_, &response_);
       break;
-    case Type1::kTryLock:
-      response_.set_type(Type::kTryLock);
-      response_.set_code(StatusCode::kError);
+    case Type::kTryLock:
+      response_.type = Type::kTryLock;
+      response_.code = CmdResponse::StatusCode::kError;
       floyd_->DoCommand(request_, &response_);
       break;
-    case Type1::kUnLock:
-      response_.set_type(Type::kUnLock);
-      response_.set_code(StatusCode::kError);
+    case Type::kUnLock:
+      response_.type = Type::kUnLock;
+      response_.code = CmdResponse::StatusCode::kError;
       floyd_->DoCommand(request_, &response_);
       break;
-    case Type1::kServerStatus:
-      response_.set_type(Type::kRead);
+    case Type::kServerStatus:
+      response_.type = Type::kRead;
       break;
-      response_.set_type(Type::kServerStatus);
-      response_.set_code(StatusCode::kError);
+      response_.type = Type::kServerStatus;
+      response_.code = CmdResponse::StatusCode::kError;
       LOGV(WARN_LEVEL, floyd_->info_log_, "obsolete command kServerStatus");
       break;
-    case Type1::kAddServer:
-      response_.set_type(Type::kAddServer);
+    case Type::kAddServer:
+      response_.type = Type::kAddServer;
       floyd_->DoCommand(request_, &response_);
       break;
-    case Type1::kRemoveServer:
-      response_.set_type(Type::kRemoveServer);
+    case Type::kRemoveServer:
+      response_.type = Type::kRemoveServer;
       floyd_->DoCommand(request_, &response_);
       break;
-    case Type1::kGetAllServers:
-      response_.set_type(Type::kGetAllServers);
+    case Type::kGetAllServers:
+      response_.type = Type::kGetAllServers;
       floyd_->DoCommand(request_, &response_);
       break;
-    case Type1::kRequestVote:
-      response_.set_type(Type::kRequestVote);
+    case Type::kRequestVote:
+      response_.type = Type::kRequestVote;
       floyd_->ReplyRequestVote(request_, &response_);
-      response_.set_code(StatusCode::kOk);
+      response_.code = CmdResponse::StatusCode::kOk;
       break;
-    case Type1::kAppendEntries:
-      response_.set_type(Type::kAppendEntries);
+    case Type::kAppendEntries:
+      response_.type = Type::kAppendEntries;
       floyd_->ReplyAppendEntries(request_, &response_);
-      response_.set_code(StatusCode::kOk);
+      response_.code = CmdResponse::StatusCode::kOk;
       break;
     default:
-      response_.set_type(Type::kRead);
+      response_.type = Type::kRead;
       LOGV(WARN_LEVEL, floyd_->info_log_, "unknown cmd type");
       break;
   }
-  res_ = &response_;
   return 0;
 }
 

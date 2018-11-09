@@ -10,7 +10,6 @@
 #include "slash/include/env.h"
 #include "slash/include/xdebug.h"
 
-#include "floyd/src/floyd.pb.h"
 #include "floyd/src/logger.h"
 #include "floyd/src/raft_meta.h"
 

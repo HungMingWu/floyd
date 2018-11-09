@@ -1,7 +1,7 @@
 CLEAN_FILES = # deliberately empty, so we can append below.
 CC=cc
 CXX=g++
-LDFLAGS= -lpthread -lrt -lprotobuf
+LDFLAGS= -lpthread -lrt
 CFLAGS= -fno-builtin-memcmp -msse -msse4.2
 CXXFLAGS= -std=c++17 -fno-builtin-memcmp -msse -msse4.2
 PROFILING_FLAGS=-pg

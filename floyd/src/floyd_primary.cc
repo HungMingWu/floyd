@@ -7,7 +7,6 @@
 
 #include <stdlib.h>
 #include <time.h>
-#include <google/protobuf/text_format.h>
 #include <boost/asio/ts/executor.hpp> 
 
 #include <climits>
@@ -21,7 +20,6 @@
 #include "floyd/src/floyd_context.h"
 #include "floyd/src/floyd_client_pool.h"
 #include "floyd/src/raft_meta.h"
-#include "floyd/src/floyd.pb.h"
 #include "floyd/src/logger.h"
 #include "floyd/include/floyd_options.h"
 

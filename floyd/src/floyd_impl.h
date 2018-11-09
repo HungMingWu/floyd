@@ -18,6 +18,7 @@
 #include "floyd/include/floyd.h"
 #include "floyd/include/floyd_options.h"
 #include "floyd/src/raft_log.h"
+#include "floyd/src/floyd_ds.h"
 
 namespace floyd {
 using slash::Status;
@@ -33,9 +34,8 @@ class FloydWorkerConn;
 class FloydContext;
 class Logger;
 class CmdRequest;
-class CmdRequest;
 class CmdResponse;
-class CmdResponse_ServerStatus;
+class CmdResponse;
 
 typedef std::map<std::string, std::unique_ptr<Peer>> PeersSet;
 
@@ -108,7 +108,7 @@ class FloydImpl : public Floyd {
 
   Status DoCommand(const CmdRequest& cmd, CmdResponse *cmd_res);
   Status ExecuteCommand(const CmdRequest& cmd, CmdResponse *cmd_res);
-  bool DoGetServerStatus(CmdResponse_ServerStatus* res);
+  bool DoGetServerStatus(CmdResponse::ServerStatus* res);
 
   /*
    * these two are the response to the request vote and appendentries

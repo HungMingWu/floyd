@@ -5,7 +5,6 @@
 
 #include "floyd/src/floyd_peer.h"
 
-#include <google/protobuf/text_format.h>
 #include <boost/asio/ts/executor.hpp>
 
 #include <algorithm>
@@ -21,7 +20,6 @@
 #include "floyd/src/floyd_context.h"
 #include "floyd/src/floyd_client_pool.h"
 #include "floyd/src/raft_log.h"
-#include "floyd/src/floyd.pb.h"
 #include "floyd/src/logger.h"
 #include "floyd/src/raft_meta.h"
 #include "floyd/src/floyd_apply.h"
@@ -72,13 +70,13 @@ void Peer::RequestVoteRPC() {
   std::lock_guard l(context_.global_mu);
   raft_log_.GetLastLogTermAndIndex(&last_log_term, &last_log_index);
 
-  req.settype(Type1::kRequestVote);
-  auto &request_vote = req.getrequest_vote();
-  request_vote.setip(options_.local_ip);
-  request_vote.setport(options_.local_port);
-  request_vote.setterm(context_.current_term);
-  request_vote.setlast_log_term(last_log_term);
-  request_vote.setlast_log_index(last_log_index);
+  req.type = Type::kRequestVote;
+  auto &request_vote = req.request_vote;
+  request_vote.ip = options_.local_ip;
+  request_vote.port = options_.local_port;
+  request_vote.term = context_.current_term;
+  request_vote.last_log_term = last_log_term;
+  request_vote.last_log_index = last_log_index;
   LOGV(INFO_LEVEL, info_log_, "Peer::RequestVoteRPC server %s:%d Send RequestVoteRPC message to %s at term %d",
       options_.local_ip.c_str(), options_.local_port, peer_addr_.c_str(), context_.current_term);
   }
@@ -99,32 +97,32 @@ void Peer::RequestVoteRPC() {
          options_.local_ip.c_str(), options_.local_port, peer_addr_.c_str(), result.ToString().c_str());
     return;
   }
-  if (res.request_vote_res().term() > context_.current_term) {
+  if (res.request_vote_res.term > context_.current_term) {
     // RequestVote fail, maybe opposite has larger term, or opposite has
     // longer log. if opposite has larger term, this node will become follower
     // otherwise we will do nothing
     LOGV(INFO_LEVEL, info_log_, "Peer::RequestVoteRPC: Become Follower, Candidate %s:%d vote request denied by %s,"
         " request_vote_res.term()=%lu, current_term=%lu", options_.local_ip.c_str(), options_.local_port,
-        peer_addr_.c_str(), res.request_vote_res().term(), context_.current_term);
-    context_.BecomeFollower(res.request_vote_res().term());
+        peer_addr_.c_str(), res.request_vote_res.term, context_.current_term);
+    context_.BecomeFollower(res.request_vote_res.term);
     context_.voted_for_ip.clear();
     context_.voted_for_port = 0;
     raft_meta_.SetCurrentTerm(context_.current_term);
     raft_meta_.SetVotedForIp(context_.voted_for_ip);
     raft_meta_.SetVotedForPort(context_.voted_for_port);
     return;
-  } else if (res.request_vote_res().term() < context_.current_term) {
+  } else if (res.request_vote_res.term < context_.current_term) {
     // Ingore old term rsp
     return;
   }
   if (context_.role == Role::kCandidate) {
     // kOk means RequestVote success, opposite vote for me
-    if (res.request_vote_res().vote_granted() == true) {    // granted
+    if (res.request_vote_res.vote_granted == true) {    // granted
       LOGV(INFO_LEVEL, info_log_, "Peer::RequestVoteRPC: Candidate %s:%d get vote from node %s at term %d",
           options_.local_ip.c_str(), options_.local_port, peer_addr_.c_str(), context_.current_term);
       // However, we need check whether this vote is vote for old term
       // we need ignore these type of vote
-      if (CheckAndVote(res.request_vote_res().term())) {
+      if (CheckAndVote(res.request_vote_res.term)) {
         context_.BecomeLeader();
         UpdatePeerInfo();
         LOGV(INFO_LEVEL, info_log_, "Peer::RequestVoteRPC: %s:%d become leader at term %d",
@@ -135,7 +133,7 @@ void Peer::RequestVoteRPC() {
       LOGV(INFO_LEVEL, info_log_, "Peer::RequestVoteRPC: Candidate %s:%d deny vote from node %s at term %d, "  
           "transfer from candidate to follower", 
           options_.local_ip.c_str(), options_.local_port, peer_addr_.c_str(), context_.current_term);
-      context_.BecomeFollower(res.request_vote_res().term());
+      context_.BecomeFollower(res.request_vote_res.term);
       context_.voted_for_ip.clear();
       context_.voted_for_port = 0;
       raft_meta_.SetCurrentTerm(context_.current_term);
@@ -150,7 +148,7 @@ void Peer::RequestVoteRPC() {
     LOGV(INFO_LEVEL, info_log_, "Peer::RequestVotePPC: Server %s:%d is already a leader at term %lu, " 
         "get vote from node %s at term %d", 
         options_.local_ip.c_str(), options_.local_port, context_.current_term,
-        peer_addr_.c_str(), res.request_vote_res().term());
+        peer_addr_.c_str(), res.request_vote_res.term);
   }
   }
   return;
@@ -193,7 +191,7 @@ void Peer::AppendEntriesRPC() {
   uint64_t last_log_index = 0;
   uint64_t current_term = 0;
   CmdRequest req;
-  auto &append_entries = req.getappend_entries();
+  auto &append_entries = req.append_entries;
   {
   std::lock_guard l(context_.global_mu);
   prev_log_index = next_index_ - 1;
@@ -212,23 +210,23 @@ void Peer::AppendEntriesRPC() {
       LOGV(WARN_LEVEL, info_log_, "Peer::AppendEntriesRPC: Get my(%s:%d) Entry index %llu "
           "not found", options_.local_ip.c_str(), options_.local_port, prev_log_index);
     } else {
-      prev_log_term = entry->getterm();
+      prev_log_term = entry->term;
     }
   }
   current_term = context_.current_term;
 
-  req.settype(Type1::kAppendEntries);
-  append_entries.setip(options_.local_ip);
-  append_entries.setport(options_.local_port);
-  append_entries.setterm(current_term);
-  append_entries.setprev_log_index(prev_log_index);
-  append_entries.setprev_log_term(prev_log_term);
-  append_entries.setleader_commit(context_.commit_index);
+  req.type = Type::kAppendEntries;
+  append_entries.ip = options_.local_ip;
+  append_entries.port = options_.local_port;
+  append_entries.term = current_term;
+  append_entries.prev_log_index = prev_log_index;
+  append_entries.prev_log_term = prev_log_term;
+  append_entries.leader_commit = context_.commit_index;
   }
 
   for (uint64_t index = next_index_; index <= last_log_index; index++) {
     if (auto tmp_entry = raft_log_.GetEntry(index); tmp_entry) {
-      append_entries.appendEntry(tmp_entry.value());
+      append_entries.entries.push_back(tmp_entry.value());
     } else {
       LOGV(WARN_LEVEL, info_log_, "Peer::AppendEntriesRPC: peer_addr %s can't get Entry "
           "from raft_log, index %lld", peer_addr_.c_str(), index);
@@ -263,18 +261,18 @@ void Peer::AppendEntriesRPC() {
   }
 
   // here we may get a larger term, and transfer to follower
-  if (res.append_entries_res().term() > context_.current_term) {
+  if (res.append_entries_res.term > context_.current_term) {
     LOGV(INFO_LEVEL, info_log_, "Peer::AppendEntriesRPC: %s:%d Transfer from Leader to Follower since get A larger term"
         "from peer %s, local term is %d, peer term is %d", options_.local_ip.c_str(), options_.local_port,
-        peer_addr_.c_str(), context_.current_term, res.append_entries_res().term());
-    context_.BecomeFollower(res.append_entries_res().term());
+        peer_addr_.c_str(), context_.current_term, res.append_entries_res.term);
+    context_.BecomeFollower(res.append_entries_res.term);
     context_.voted_for_ip.clear();
     context_.voted_for_port = 0;
     raft_meta_.SetCurrentTerm(context_.current_term);
     raft_meta_.SetVotedForIp(context_.voted_for_ip);
     raft_meta_.SetVotedForPort(context_.voted_for_port);
     return;
-  } else if (res.append_entries_res().term() < context_.current_term) {
+  } else if (res.append_entries_res.term < context_.current_term) {
     // Ignore old term msg
     return;
   }
@@ -284,12 +282,12 @@ void Peer::AppendEntriesRPC() {
     /*
      * receiver has higer term than myself, so turn from candidate to follower
      */
-    if (res.append_entries_res().success() == true) {
+    if (res.append_entries_res.success == true) {
       if (num_entries > 0) {
         match_index_ = prev_log_index + num_entries;
         // only log entries from the leader's current term are committed
         // by counting replicas
-        if (append_entries.getentries()[num_entries - 1].getterm() == context_.current_term) {
+        if (append_entries.entries[num_entries - 1].term == context_.current_term) {
           AdvanceLeaderCommitIndex();
           apply_.ScheduleApply();
         }
@@ -298,8 +296,8 @@ void Peer::AppendEntriesRPC() {
     } else {
       LOGV(INFO_LEVEL, info_log_, "Peer::AppEntriesRPC: peer_addr %s Send AppEntriesRPC failed,"
           "peer's last_log_index %lu, peer's next_index_ %lu",
-          peer_addr_.c_str(), res.append_entries_res().last_log_index(), next_index_.load());
-      uint64_t adjust_index = std::min(res.append_entries_res().last_log_index() + 1,
+          peer_addr_.c_str(), res.append_entries_res.last_log_index, next_index_.load());
+      uint64_t adjust_index = std::min(res.append_entries_res.last_log_index + 1,
                                        next_index_ - 1);
       if (adjust_index > 0) {
         // Prev log don't match, so we retry with more prev one according to

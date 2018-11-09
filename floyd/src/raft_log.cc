@@ -5,7 +5,6 @@
 
 #include "floyd/src/raft_log.h"
 
-#include <google/protobuf/text_format.h>
 #include <cereal/types/memory.hpp>
 #include <cereal/archives/binary.hpp>
 
@@ -16,7 +15,6 @@
 #include "rocksdb/iterator.h"
 #include "slash/include/xdebug.h"
 
-#include "floyd/src/floyd.pb.h"
 #include "floyd/src/logger.h"
 #include "floyd/include/floyd_options.h"
 #include "floyd/src/floyd_ds.h"
@@ -118,7 +116,7 @@ bool RaftLog::GetLastLogTermAndIndex(uint64_t* last_log_term, uint64_t* last_log
   cereal::BinaryInputArchive archive(is);
   archive(entry);
   *last_log_index = last_log_index_;
-  *last_log_term = entry.getterm();
+  *last_log_term = entry.term;
   return true;
 }
 
