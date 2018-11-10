@@ -10,13 +10,9 @@
 #include <map>
 #include <boost/asio/ts/io_context.hpp>
 
-#include "slash/include/slash_status.h"
-
 #include "floyd/src/floyd_context.h"
 
 namespace floyd {
-
-using slash::Status;
 
 class RaftMeta;
 class FloydPrimary;

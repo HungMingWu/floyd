@@ -16,7 +16,6 @@
 #include "pink/include/bg_thread.h"
 #include "slash/include/env.h"
 #include "slash/include/slash_string.h"
-#include "slash/include/slash_mutex.h"
 
 #include "floyd/src/floyd_context.h"
 #include "floyd/src/floyd_apply.h"
@@ -242,10 +241,11 @@ int FloydImpl::InitPeers() {
   return 0;
 }
 
-Status FloydImpl::Init() {
+std::error_code FloydImpl::Init() {
   slash::CreatePath(options_.path);
   if (NewLogger(options_.path + "/LOG", &info_log_) != 0) {
-    return Status::Corruption("Open LOG failed, ", strerror(errno));
+    // return Status::Corruption("Open LOG failed, ", strerror(errno));
+    return {};
   }
 
   // TODO(anan) set timeout and retry
@@ -259,13 +259,15 @@ Status FloydImpl::Init() {
   rocksdb::Status s = rocksdb::DB::Open(options, options_.path + "/db/", &db_);
   if (!s.ok()) {
     LOGV(ERROR_LEVEL, info_log_, "Open db failed! path: %s", options_.path.c_str());
-    return Status::Corruption("Open DB failed, " + s.ToString());
+    // return Status::Corruption("Open DB failed, " + s.ToString());
+    return {};
   }
 
   s = rocksdb::DB::Open(options, options_.path + "/log/", &log_and_meta_);
   if (!s.ok()) {
     LOGV(ERROR_LEVEL, info_log_, "Open DB log_and_meta failed! path: %s", options_.path.c_str());
-    return Status::Corruption("Open DB log_and_meta failed, " + s.ToString());
+    // return Status::Corruption("Open DB log_and_meta failed, " + s.ToString());
+    return {};
   }
 
   // Recover Context
@@ -296,7 +298,8 @@ Status FloydImpl::Init() {
     s = db_->Put(rocksdb::WriteOptions(), kMemberConfigKey, os.str());
     if (!s.ok()) {
       LOGV(ERROR_LEVEL, info_log_, "Record membership in db failed! error: %s", s.ToString().c_str());
-      return Status::Corruption("Record membership in db failed! error: " + s.ToString());
+      // return Status::Corruption("Record membership in db failed! error: " + s.ToString());
+      return {};
     }
     LOGV(INFO_LEVEL, info_log_, "FloydImpl::Init: Load Membership from option, count: %d", options_.members.size());
     for (const auto& m : options_.members) {
@@ -313,7 +316,8 @@ Status FloydImpl::Init() {
   int ret = 0;
   if ((ret = worker_->Start()) != 0) {
     LOGV(ERROR_LEVEL, info_log_, "FloydImpl::Init worker thread failed to start, ret is %d", ret);
-    return Status::Corruption("failed to start worker, return " + std::to_string(ret));
+    // return Status::Corruption("failed to start worker, return " + std::to_string(ret));
+    return {};
   }
   // Apply thread should start at the last
   apply_ = std::make_unique<FloydApply>(ctx, *context_, db_, *raft_meta_, *raft_log_, this, info_log_);
@@ -325,15 +329,14 @@ Status FloydImpl::Init() {
   // test only
   // options_.Dump();
   LOGV(INFO_LEVEL, info_log_, "FloydImpl::Init Floyd started!\nOptions\n%s", options_.ToString().c_str());
-  return Status::OK();
+  return {};
 }
 
-Status Floyd::Open(const Options& options, Floyd** floyd) {
+std::error_code Floyd::Open(const Options& options, Floyd** floyd) {
   *floyd = NULL;
-  Status s;
   FloydImpl *impl = new FloydImpl(options);
-  s = impl->Init();
-  if (s.ok()) {
+  std::error_code s = impl->Init();
+  if (!s) {
     *floyd = impl;
   } else {
     delete impl;
@@ -344,126 +347,134 @@ Status Floyd::Open(const Options& options, Floyd** floyd) {
 Floyd::~Floyd() {
 }
 
-Status FloydImpl::Write(const std::string& key, const std::string& value) {
+std::error_code FloydImpl::Write(const std::string& key, const std::string& value) {
   CmdRequest cmd;
   BuildWriteRequest(key, value, &cmd);
   CmdResponse response;
-  Status s = DoCommand(cmd, &response);
-  if (!s.ok()) {
+  std::error_code s = DoCommand(cmd, &response);
+  if (!s) {
     return s;
   }
   if (response.code == CmdResponse::StatusCode::kOk) {
-    return Status::OK();
+    return {};
   }
-  return Status::Corruption("Write Error");
+  //return Status::Corruption("Write Error");
+  return s;
 }
 
-Status FloydImpl::Delete(const std::string& key) {
+std::error_code FloydImpl::Delete(const std::string& key) {
   CmdRequest cmd;
   BuildDeleteRequest(key, &cmd);
   CmdResponse response;
-  Status s = DoCommand(cmd, &response);
-  if (!s.ok()) {
+  std::error_code s = DoCommand(cmd, &response);
+  if (!s) {
     return s;
   }
   if (response.code == CmdResponse::StatusCode::kOk) {
-    return Status::OK();
+    return {};
   }
-  return Status::Corruption("Delete Error");
+  //return Status::Corruption("Delete Error");
+  return s;
 }
 
-Status FloydImpl::Read(const std::string& key, std::string* value) {
+std::error_code FloydImpl::Read(const std::string& key, std::string* value) {
   CmdRequest request;
   BuildReadRequest(key, &request);
   CmdResponse response;
-  Status s = DoCommand(request, &response);
-  if (!s.ok()) {
+  std::error_code s = DoCommand(request, &response);
+  if (!s) {
     return s;
   }
   if (response.code == CmdResponse::StatusCode::kOk) {
     *value = response.kv_response.value;
-    return Status::OK();
+    return {};
   } else if (response.code == CmdResponse::StatusCode::kNotFound) {
-    return Status::NotFound("not found the key");
+    // return Status::NotFound("not found the key");
+    return s;
   } else {
-    return Status::Corruption("Read Error");
+    // return Status::Corruption("Read Error");
+    return s;
   }
 }
 
-Status FloydImpl::DirtyRead(const std::string& key, std::string* value) {
+std::error_code FloydImpl::DirtyRead(const std::string& key, std::string* value) {
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), key, value);
   if (s.ok()) {
-    return Status::OK();
+    return {};
   } else if (s.IsNotFound()) {
-    return Status::NotFound("");
+    // return Status::NotFound("");
+    return {};
   }
-  return Status::Corruption(s.ToString());
+  // return Status::Corruption(s.ToString());
+  return {};
 }
 
-Status FloydImpl::TryLock(const std::string& name, const std::string& holder, uint64_t ttl) {
+std::error_code FloydImpl::TryLock(const std::string& name, const std::string& holder, uint64_t ttl) {
   CmdRequest request;
   BuildTryLockRequest(name, holder, ttl, &request);
   CmdResponse response;
-  Status s = DoCommand(request, &response);
-  if (!s.ok()) {
+  std::error_code s = DoCommand(request, &response);
+  if (!s) {
     return s;
   }
   if (response.code == CmdResponse::StatusCode::kOk) {
-    return Status::OK();
+    return {};
   }
-  return Status::Corruption("Lock Error");
+  // return Status::Corruption("Lock Error");
+  return s;
 }
 
-Status FloydImpl::UnLock(const std::string& name, const std::string& holder) {
+std::error_code FloydImpl::UnLock(const std::string& name, const std::string& holder) {
   CmdRequest request;
   BuildUnLockRequest(name, holder, &request);
   CmdResponse response;
-  Status s = DoCommand(request, &response);
-  if (!s.ok()) {
+  std::error_code s = DoCommand(request, &response);
+  if (!s) {
     return s;
   }
   if (response.code == CmdResponse::StatusCode::kOk) {
-    return Status::OK();
+    return {};
   }
-  return Status::Corruption("UnLock Error");
+  // return Status::Corruption("UnLock Error");
+  return s;
 }
 
-Status FloydImpl::AddServer(const std::string& new_server) {
+std::error_code FloydImpl::AddServer(const std::string& new_server) {
   CmdRequest request;
   BuildAddServerRequest(new_server, &request);
   CmdResponse response;
-  Status s = DoCommand(request, &response);
-  if (!s.ok()) {
+  std::error_code s = DoCommand(request, &response);
+  if (!s) {
     return s;
   }
   if (response.code == CmdResponse::StatusCode::kOk) {
-    return Status::OK();
+    return {};
   }
-
-  return Status::Corruption("AddServer Error");
+  // return Status::Corruption("AddServer Error");
+  return s;
 }
 
-Status FloydImpl::RemoveServer(const std::string& old_server) {
+std::error_code FloydImpl::RemoveServer(const std::string& old_server) {
   CmdRequest request;
   BuildRemoveServerRequest(old_server, &request);
   CmdResponse response;
-  Status s = DoCommand(request, &response);
-  if (!s.ok()) {
+  std::error_code s = DoCommand(request, &response);
+  if (!s) {
     return s;
   }
   if (response.code == CmdResponse::StatusCode::kOk) {
-    return Status::OK();
+    return {};
   }
-
-  return Status::Corruption("RemoveServer Error");
+  // return Status::Corruption("RemoveServer Error");
+  return s;
 }
 
-Status FloydImpl::GetAllServers(std::set<std::string>* nodes) {
+std::error_code FloydImpl::GetAllServers(std::set<std::string>* nodes) {
   CmdRequest request;
   BuildGetAllServersRequest(&request);
   CmdResponse response;
-  Status s = DoCommand(request, &response);
-  if (!s.ok()) {
+  std::error_code s = DoCommand(request, &response);
+  if (!s) {
     return s;
   }
   if (response.code == CmdResponse::StatusCode::kOk) {
@@ -471,9 +482,10 @@ Status FloydImpl::GetAllServers(std::set<std::string>* nodes) {
     for (const auto &node : response.all_servers.nodes) {
       nodes->insert(node);
     }
-    return Status::OK();
+    return {};
   }
-  return Status::Corruption("GetALlServers Error");
+  // return Status::Corruption("GetALlServers Error");
+  return s;
 }
 
 
@@ -500,7 +512,7 @@ bool FloydImpl::GetServerStatus(std::string* msg) {
   return true;
 }
 
-Status FloydImpl::DoCommand(const CmdRequest& request, CmdResponse *response) {
+std::error_code FloydImpl::DoCommand(const CmdRequest& request, CmdResponse *response) {
   // Execute if is leader
   auto [leader_ip, leader_port] = [this]
   {
@@ -511,7 +523,8 @@ Status FloydImpl::DoCommand(const CmdRequest& request, CmdResponse *response) {
   if (options_.local_ip == leader_ip && options_.local_port == leader_port) {
     return ExecuteCommand(request, response);
   } else if (leader_ip == "" || leader_port == 0) {
-    return Status::Incomplete("no leader node!");
+    // return Status::Incomplete("no leader node!");
+    return {};
   }
   // Redirect to leader
   return worker_client_pool_->SendAndRecv(
@@ -567,7 +580,7 @@ bool FloydImpl::DoGetServerStatus(CmdResponse::ServerStatus* res) {
   return true;
 }
 
-Status FloydImpl::ExecuteCommand(const CmdRequest& request,
+std::error_code FloydImpl::ExecuteCommand(const CmdRequest& request,
                                  CmdResponse *response) {
   // Append entry local
   std::vector<Entry> entries = BuildLogEntry(request, context_->current_term);
@@ -576,7 +589,8 @@ Status FloydImpl::ExecuteCommand(const CmdRequest& request,
 
   uint64_t last_log_index = raft_log_->Append(entries);
   if (last_log_index <= 0) {
-    return Status::IOError("Append Entry failed");
+    // return Status::IOError("Append Entry failed");
+    return {};
   }
 
   // Notify primary then wait for apply
@@ -592,7 +606,8 @@ Status FloydImpl::ExecuteCommand(const CmdRequest& request,
   std::unique_lock l(context_->apply_mu);
   while (context_->last_applied < last_log_index) {
     if (context_->apply_cond.wait_for(l, std::chrono::milliseconds(1000)) == std::cv_status::timeout) {
-      return Status::Timeout("FloydImpl::ExecuteCommand Timeout");
+      // return Status::Timeout("FloydImpl::ExecuteCommand Timeout");
+      return {};
     }
   }
   }
@@ -616,7 +631,8 @@ Status FloydImpl::ExecuteCommand(const CmdRequest& request,
         BuildReadResponse(request.kv_request.key, value, CmdResponse::StatusCode::kNotFound, response);
       } else {
         BuildReadResponse(request.kv_request.key, value, CmdResponse::StatusCode::kError, response);
-        return Status::Corruption("get key error");
+        // return Status::Corruption("get key error");
+	return {};
       }
       LOGV(DEBUG_LEVEL, info_log_, "FloydImpl::ExecuteCommand Read %s, key(%s) value(%s)",
            rs.ToString().c_str(), request.kv_request.key.c_str(), value.c_str());
@@ -651,7 +667,8 @@ Status FloydImpl::ExecuteCommand(const CmdRequest& request,
     case Type::kGetAllServers:
       rs = db_->Get(rocksdb::ReadOptions(), kMemberConfigKey, &value);
       if (!rs.ok()) {
-        return Status::Corruption(rs.ToString());
+        // return Status::Corruption(rs.ToString());
+	return {};
       }
       {
 	std::istringstream is(value);
@@ -661,9 +678,10 @@ Status FloydImpl::ExecuteCommand(const CmdRequest& request,
       response->code = CmdResponse::StatusCode::kOk;
       break;
     default:
-      return Status::Corruption("Unknown request type");
+      // return Status::Corruption("Unknown request type");
+      return {};
   }
-  return Status::OK();
+  return {};
 }
 
 int FloydImpl::ReplyRequestVote(const CmdRequest& request, CmdResponse* response) {

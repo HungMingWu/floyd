@@ -10,13 +10,11 @@
 #include <string>
 #include <map>
 #include <mutex>
+#include <system_error>
 
 #include "pink/include/pink_cli.h"
-#include "slash/include/slash_status.h"
 
 namespace floyd {
-
-using slash::Status;
 
 class Logger;
 class CmdRequest;
@@ -36,10 +34,10 @@ class ClientPool {
   ~ClientPool();
 
   // Each try consists of Connect, Send and Recv;
-  Status SendAndRecv(const std::string& server, const CmdRequest& req,
+  std::error_code SendAndRecv(const std::string& server, const CmdRequest& req,
       CmdResponse* res);
 
-  Status UpHoldCli(Client* client);
+  std::error_code UpHoldCli(Client* client);
 
  private:
   Logger* const info_log_;

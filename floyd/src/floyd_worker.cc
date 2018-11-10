@@ -14,7 +14,6 @@
 #include "slash/include/env.h"
 
 namespace floyd {
-using slash::Status;
 
 FloydWorker::FloydWorker(int port, int cron_interval, FloydImpl* floyd)
   : conn_factory_(floyd),

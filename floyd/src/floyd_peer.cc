@@ -13,7 +13,6 @@
 #include <string>
 
 #include "slash/include/env.h"
-#include "slash/include/slash_mutex.h"
 #include "slash/include/xdebug.h"
 
 #include "floyd/src/floyd_primary.h"
@@ -82,19 +81,19 @@ void Peer::RequestVoteRPC() {
   }
 
   CmdResponse res;
-  Status result = pool_.SendAndRecv(peer_addr_, req, &res);
+  std::error_code result = pool_.SendAndRecv(peer_addr_, req, &res);
 
-  if (!result.ok()) {
+  if (!result) {
     LOGV(DEBUG_LEVEL, info_log_, "Peer::RequestVoteRPC: RequestVote to %s failed %s",
-         peer_addr_.c_str(), result.ToString().c_str());
+         peer_addr_.c_str(), result.message().c_str());
     return;
   }
 
   {
   std::lock_guard l(context_.global_mu);
-  if (!result.ok()) {
+  if (!result) {
     LOGV(WARN_LEVEL, info_log_, "Peer::RequestVoteRPC: Candidate %s:%d SendAndRecv to %s failed %s",
-         options_.local_ip.c_str(), options_.local_port, peer_addr_.c_str(), result.ToString().c_str());
+         options_.local_ip.c_str(), options_.local_port, peer_addr_.c_str(), result.message().c_str());
     return;
   }
   if (res.request_vote_res.term > context_.current_term) {
@@ -250,13 +249,13 @@ void Peer::AppendEntriesRPC() {
   }
 
   CmdResponse res;
-  Status result = pool_.SendAndRecv(peer_addr_, req, &res);
+  std::error_code result = pool_.SendAndRecv(peer_addr_, req, &res);
 
   {
   std::lock_guard l(context_.global_mu);
-  if (!result.ok()) {
+  if (!result) {
     LOGV(WARN_LEVEL, info_log_, "Peer::AppendEntries: Leader %s:%d SendAndRecv to %s failed, result is %s\n",
-         options_.local_ip.c_str(), options_.local_port, peer_addr_.c_str(), result.ToString().c_str());
+         options_.local_ip.c_str(), options_.local_port, peer_addr_.c_str(), result.message().c_str());
     return;
   }
 

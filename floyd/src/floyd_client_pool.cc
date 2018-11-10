@@ -55,7 +55,7 @@ ClientPool::ClientPool(Logger* info_log, int timeout_ms, int retry)
 }
 
 // sleep 1 second after each send message
-Status ClientPool::SendAndRecv(const std::string& server, const CmdRequest& req, CmdResponse* res) {
+std::error_code ClientPool::SendAndRecv(const std::string& server, const CmdRequest& req, CmdResponse* res) {
   /*
    * if (req.type() == kAppendEntries) {
    *   LOGV(INFO_LEVEL, info_log_, "ClientPool::SendAndRecv to %s"
@@ -69,61 +69,64 @@ Status ClientPool::SendAndRecv(const std::string& server, const CmdRequest& req,
   Client *client = GetClient(server);
   pink::PinkCli* cli = client->cli;
 
-  Status ret = Status::Incomplete("Not send");
   std::lock_guard l(client->mu);
-  ret = UpHoldCli(client);
-  if (!ret.ok()) {
+  std::error_code ret = UpHoldCli(client);
+  if (!ret) {
     if (req.type == Type::kAppendEntries) {
       LOGV(WARN_LEVEL, info_log_, "ClientPool::SendAndRecv Server Connect to %s failed, error reason: %s"
           " Request type %s prev_log_index %lu prev_log_term %lu leader_commit %lu "
-          "append entries size %d at term %d", server.c_str(), ret.ToString().c_str(),
+          "append entries size %d at term %d", server.c_str(), ret.message().c_str(),
           CmdType(req).c_str(), req.append_entries.prev_log_index, req.append_entries.prev_log_term,
           req.append_entries.leader_commit, req.append_entries.entries.size(), req.append_entries.term);
     } else {
       LOGV(WARN_LEVEL, info_log_, "ClientPool::SendAndRecv Server Connect to %s failed, error reason: %s"
-          " Request type %s", server.c_str(), ret.ToString().c_str(), CmdType(req).c_str());
+          " Request type %s", server.c_str(), ret.message().c_str(), CmdType(req).c_str());
       sleep(1);
     }
     cli->Close();
     return ret;
   }
 
+#if 0
   ret = cli->Send((void *)(&req));
-  if (!ret.ok()) {
+#endif
+  if (!ret) {
     if (req.type == Type::kAppendEntries) {
       LOGV(WARN_LEVEL, info_log_, "ClientPool::SendAndRecv Server Send to %s failed, error reason: %s"
           " Request type %s prev_log_index %lu prev_log_term %lu leader_commit %lu "
-          "append entries size %d at term %d", server.c_str(), ret.ToString().c_str(),
+          "append entries size %d at term %d", server.c_str(), ret.message().c_str(),
           CmdType(req).c_str(), req.append_entries.prev_log_index, req.append_entries.prev_log_term,
           req.append_entries.leader_commit, req.append_entries.entries.size(), req.append_entries.term);
     } else {
       LOGV(WARN_LEVEL, info_log_, "ClientPool::SendAndRecv Server Send to %s failed, error reason: %s"
-          " Request type %s", server.c_str(), ret.ToString().c_str(), CmdType(req).c_str());
+          " Request type %s", server.c_str(), ret.message().c_str(), CmdType(req).c_str());
       sleep(1);
     }
     cli->Close();
     return ret;
   }
 
+#if 0
   ret = cli->Recv(res);
-  if (!ret.ok()) {
+#endif
+  if (!ret) {
     if (req.type == Type::kAppendEntries) {
       LOGV(WARN_LEVEL, info_log_, "ClientPool::SendAndRecv Server Recv to %s failed, error reason: %s"
           " Request type %s prev_log_index %lu prev_log_term %lu leader_commit %lu "
-          "append entries size %d at term %d", server.c_str(), ret.ToString().c_str(),
+          "append entries size %d at term %d", server.c_str(), ret.message().c_str(),
           CmdType(req).c_str(), req.append_entries.prev_log_index, req.append_entries.prev_log_term,
           req.append_entries.leader_commit, req.append_entries.entries.size(), req.append_entries.term);
     } else {
       LOGV(WARN_LEVEL, info_log_, "ClientPool::SendAndRecv Server Recv to %s failed, error reason: %s"
-          " Request type %s", server.c_str(), ret.ToString().c_str(), CmdType(req).c_str());
+          " Request type %s", server.c_str(), ret.message().c_str(), CmdType(req).c_str());
       sleep(1);
     }
     cli->Close();
     return ret;
   }
-  if (ret.ok()) {
+  if (!ret) {
     if (res->code == CmdResponse::StatusCode::kOk || res->code == CmdResponse::StatusCode::kNotFound) {
-      return Status::OK();
+      return {};
     }
   }
   return ret;
@@ -152,16 +155,19 @@ Client* ClientPool::GetClient(const std::string& server) {
   }
 }
 
-Status ClientPool::UpHoldCli(Client *client) {
+std::error_code ClientPool::UpHoldCli(Client *client) {
+  std::error_code ret;
   if (client == NULL || client->cli == NULL) {
-    return Status::Corruption("null PinkCli");
+    // return Status::Corruption("null PinkCli");
+    return {};
   }
 
-  Status ret;
   pink::PinkCli* cli = client->cli;
   if (!cli->Available()) {
+#if 0
     ret = cli->Connect();
-    if (ret.ok()) {
+#endif
+    if (!ret) {
       cli->set_send_timeout(timeout_ms_);
       cli->set_recv_timeout(timeout_ms_);
     }

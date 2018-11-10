@@ -8,39 +8,37 @@
 
 #include <string>
 #include <set>
+#include <system_error>
 
 #include "floyd/include/floyd_options.h"
-#include "slash/include/slash_status.h"
 
 namespace floyd {
 
-using slash::Status;
-
 class Floyd  {
  public:
-  static Status Open(const Options& options, Floyd** floyd);
+  static std::error_code Open(const Options& options, Floyd** floyd);
 
   Floyd() { }
   virtual ~Floyd();
 
-  virtual Status Write(const std::string& key, const std::string& value) = 0;
-  virtual Status Delete(const std::string& key) = 0;
-  virtual Status Read(const std::string& key, std::string* value) = 0;
-  virtual Status DirtyRead(const std::string& key, std::string* value) = 0;
+  virtual std::error_code Write(const std::string& key, const std::string& value) = 0;
+  virtual std::error_code Delete(const std::string& key) = 0;
+  virtual std::error_code Read(const std::string& key, std::string* value) = 0;
+  virtual std::error_code DirtyRead(const std::string& key, std::string* value) = 0;
   // ttl is millisecond
-  virtual Status TryLock(const std::string& name, const std::string& holder, uint64_t ttl) = 0;
-  virtual Status UnLock(const std::string& name, const std::string& holder) = 0;
+  virtual std::error_code TryLock(const std::string& name, const std::string& holder, uint64_t ttl) = 0;
+  virtual std::error_code UnLock(const std::string& name, const std::string& holder) = 0;
 
   // membership change interface
-  virtual Status AddServer(const std::string& new_server) = 0;
-  virtual Status RemoveServer(const std::string& out_server) = 0;
+  virtual std::error_code AddServer(const std::string& new_server) = 0;
+  virtual std::error_code RemoveServer(const std::string& out_server) = 0;
 
   // return true if leader has been elected
   virtual bool GetLeader(std::string* ip_port) = 0;
   virtual bool GetLeader(std::string* ip, int* port) = 0;
   virtual bool HasLeader() = 0;
   virtual bool IsLeader() = 0;
-  virtual Status GetAllServers(std::set<std::string>* nodes) = 0;
+  virtual std::error_code GetAllServers(std::set<std::string>* nodes) = 0;
 
   // used for debug
   virtual bool GetServerStatus(std::string* msg) = 0;

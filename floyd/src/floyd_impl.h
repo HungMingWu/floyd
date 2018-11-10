@@ -10,10 +10,8 @@
 #include <set>
 #include <utility>
 #include <map>
+#include <system_error>
 #include <boost/asio/ts/io_context.hpp>
-
-#include "slash/include/slash_mutex.h"
-#include "slash/include/slash_status.h"
 
 #include "floyd/include/floyd.h"
 #include "floyd/include/floyd_options.h"
@@ -21,7 +19,6 @@
 #include "floyd/src/floyd_ds.h"
 
 namespace floyd {
-using slash::Status;
 
 class Log;
 class ClientPool;
@@ -46,20 +43,20 @@ class FloydImpl : public Floyd {
   explicit FloydImpl(const Options& options);
   virtual ~FloydImpl();
 
-  Status Init();
+  std::error_code Init();
 
-  virtual Status Write(const std::string& key, const std::string& value);
-  virtual Status Delete(const std::string& key);
-  virtual Status Read(const std::string& key, std::string* value);
-  virtual Status DirtyRead(const std::string& key, std::string* value);
+  std::error_code Write(const std::string& key, const std::string& value) override;
+  std::error_code Delete(const std::string& key) override;
+  std::error_code Read(const std::string& key, std::string* value) override;
+  std::error_code DirtyRead(const std::string& key, std::string* value) override;
   // ttl is millisecond
-  virtual Status TryLock(const std::string& name, const std::string& holder, uint64_t ttl) override;
-  virtual Status UnLock(const std::string& name, const std::string& holder) override;
+  std::error_code TryLock(const std::string& name, const std::string& holder, uint64_t ttl) override;
+  std::error_code UnLock(const std::string& name, const std::string& holder) override;
 
   // membership change interface
-  virtual Status AddServer(const std::string& new_server) override;
-  virtual Status RemoveServer(const std::string& out_server) override;
-  virtual Status GetAllServers(std::set<std::string>* nodes) override;
+  std::error_code AddServer(const std::string& new_server) override;
+  std::error_code RemoveServer(const std::string& out_server) override;
+  std::error_code GetAllServers(std::set<std::string>* nodes) override;
 
   // return true if leader has been elected
   virtual bool GetLeader(std::string* ip_port) override;
@@ -106,8 +103,8 @@ class FloydImpl : public Floyd {
 
   bool IsSelf(const std::string& ip_port);
 
-  Status DoCommand(const CmdRequest& cmd, CmdResponse *cmd_res);
-  Status ExecuteCommand(const CmdRequest& cmd, CmdResponse *cmd_res);
+  std::error_code DoCommand(const CmdRequest& cmd, CmdResponse *cmd_res);
+  std::error_code ExecuteCommand(const CmdRequest& cmd, CmdResponse *cmd_res);
   bool DoGetServerStatus(CmdResponse::ServerStatus* res);
 
   /*

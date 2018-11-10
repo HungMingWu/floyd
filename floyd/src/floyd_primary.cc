@@ -14,7 +14,6 @@
 #include <vector>
 
 #include "slash/include/env.h"
-#include "slash/include/slash_mutex.h"
 
 #include "floyd/src/floyd_apply.h"
 #include "floyd/src/floyd_context.h"

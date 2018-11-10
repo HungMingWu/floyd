@@ -12,12 +12,8 @@
 #include "rocksdb/db.h"
 
 #include "floyd/include/floyd_options.h"
-#include "slash/include/slash_status.h"
-#include "slash/include/slash_mutex.h"
 
 namespace floyd {
-
-using slash::Status;
 
 class Logger;
 

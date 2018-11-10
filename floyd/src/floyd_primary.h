@@ -13,15 +13,10 @@
 #include <boost/asio/ts/io_context.hpp>
 #include <boost/asio/ts/timer.hpp>
 
-#include "slash/include/env.h"
-#include "slash/include/slash_status.h"
-
 #include "floyd/src/floyd_context.h"
 #include "floyd/src/floyd_peer.h"
 
 namespace floyd {
-
-using slash::Status;
 
 class FloydPrimary;
 

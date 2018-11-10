@@ -10,11 +10,7 @@
 
 #include "floyd/src/floyd_context.h"
 
-#include "slash/include/slash_status.h"
-
 namespace floyd {
-
-using slash::Status;
 
 class RaftMeta;
 class RaftLog;
