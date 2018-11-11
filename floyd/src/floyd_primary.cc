@@ -4,6 +4,7 @@
 // of patent rights can be found in the PATENTS file in the same directory.
 
 #include "floyd/src/floyd_primary.h"
+#include "floyd/src/floyd_ds.h"
 
 #include <stdlib.h>
 #include <time.h>
@@ -13,7 +14,6 @@
 #include <algorithm>
 #include <vector>
 
-#include "slash/include/env.h"
 
 #include "floyd/src/floyd_apply.h"
 #include "floyd/src/floyd_context.h"
@@ -92,7 +92,7 @@ void FloydPrimary::LaunchCheckLeader() {
       raft_meta_.SetCurrentTerm(context_.current_term);
       raft_meta_.SetVotedForIp(context_.voted_for_ip);
       raft_meta_.SetVotedForPort(context_.voted_for_port);
-    } else if (context_.last_op_time + options_.check_leader_us < slash::NowMicros()) {
+    } else if (context_.last_op_time + options_.check_leader_us < NowMicros()) {
       context_.BecomeCandidate();
       LOGV(INFO_LEVEL, info_log_, "FloydPrimary::LaunchCheckLeader: %s:%d Become Candidate because of timeout, new term is %d"
          " voted for %s:%d", options_.local_ip.c_str(), options_.local_port, context_.current_term,

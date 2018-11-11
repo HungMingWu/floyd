@@ -11,7 +11,6 @@
 
 #include "floyd/src/floyd_impl.h"
 #include "floyd/src/logger.h"
-#include "slash/include/env.h"
 
 namespace floyd {
 

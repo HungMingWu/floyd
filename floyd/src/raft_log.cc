@@ -13,7 +13,6 @@
 
 #include "rocksdb/db.h"
 #include "rocksdb/iterator.h"
-#include "slash/include/xdebug.h"
 
 #include "floyd/src/logger.h"
 #include "floyd/include/floyd_options.h"

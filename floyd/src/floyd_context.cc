@@ -7,9 +7,6 @@
 
 #include <stdlib.h>
 
-#include "slash/include/env.h"
-#include "slash/include/xdebug.h"
-
 #include "floyd/src/logger.h"
 #include "floyd/src/raft_meta.h"
 

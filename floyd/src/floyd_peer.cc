@@ -12,9 +12,6 @@
 #include <vector>
 #include <string>
 
-#include "slash/include/env.h"
-#include "slash/include/xdebug.h"
-
 #include "floyd/src/floyd_primary.h"
 #include "floyd/src/floyd_context.h"
 #include "floyd/src/floyd_client_pool.h"
@@ -199,10 +196,10 @@ void Peer::AppendEntriesRPC() {
    * LOGV(INFO_LEVEL, info_log_, "Peer::AppendEntriesRPC: next_index_ %d last_log_index %d peer_last_op_time %lu nowmicros %lu",
    *     next_index_.load(), last_log_index, peer_last_op_time, slash::NowMicros());
    */
-  if (next_index_ > last_log_index && peer_last_op_time + options_.heartbeat_us > slash::NowMicros()) {
+  if (next_index_ > last_log_index && peer_last_op_time + options_.heartbeat_us > NowMicros()) {
     return;
   }
-  peer_last_op_time = slash::NowMicros();
+  peer_last_op_time = NowMicros();
 
   if (prev_log_index != 0) {
     if (auto entry = raft_log_.GetEntry(prev_log_index); !entry) {

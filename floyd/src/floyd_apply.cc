@@ -13,9 +13,6 @@
 #include <unistd.h>
 #include <string>
 
-#include "slash/include/xdebug.h"
-#include "slash/include/env.h"
-
 #include "floyd/src/logger.h"
 #include "floyd/src/raft_meta.h"
 #include "floyd/src/raft_log.h"
@@ -103,7 +100,7 @@ rocksdb::Status FloydApply::Apply(const Entry& entry) {
         std::istringstream is(val);
         cereal::BinaryInputArchive archive(is);
         archive(lock);
-        if (lock.lease_end < slash::NowMicros()) {
+        if (lock.lease_end < NowMicros()) {
           LOGV(INFO_LEVEL, info_log_, "FloydApply::Apply Trylock Success, name %s holder %s, "
               "but the lock has been locked by %s, and right now it is timeout",
               entry.key.c_str(), entry.holder.c_str(), lock.holder.c_str());
@@ -137,7 +134,7 @@ rocksdb::Status FloydApply::Apply(const Entry& entry) {
         if (lock.holder != entry.holder) {
           LOGV(INFO_LEVEL, info_log_, "FloydApply::Apply Warning UnLock an lock holded by other, name %s holder %s, origin holder %s",
               entry.key.c_str(), entry.holder.c_str(), lock.holder.c_str());
-        } else if (lock.lease_end < slash::NowMicros()) {
+        } else if (lock.lease_end < NowMicros()) {
           LOGV(INFO_LEVEL, info_log_, "FloydImpl::Apply UnLock an lock which is expired, name %s holder %s",
               entry.key.c_str(), entry.holder.c_str(), lock.holder.c_str());
         } else {

@@ -3,7 +3,14 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <chrono>
 namespace floyd {
+  uint64_t NowMicros()
+  {
+    auto now = std::chrono::system_clock::now();
+    auto duration = now.time_since_epoch();
+    return std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
+  }
   /*
    * Lock is used storing data in database
    * since the Lock should contain more than one variable as the value

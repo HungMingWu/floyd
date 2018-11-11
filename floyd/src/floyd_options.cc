@@ -8,8 +8,6 @@
 #include <cstdlib>
 #include <ctime>
 
-#include "slash/include/env.h"
-
 namespace floyd {
 
 static void split(const std::string &str, char delim,
@@ -103,7 +101,7 @@ Options::Options(const std::string& cluster_string,
     append_entries_size_once(1048576),  // 1MB
     append_entries_count_once(3500),
     single_mode(false) {
-  std::srand(slash::NowMicros());
+  std::srand(time(NULL));
   // the default check_leader is [3s, 5s)
   // the default heartbeat time is 1s
   // we can promise 1s + 2 * rpc < 3s, since rpc time is approximately 10ms

@@ -13,9 +13,6 @@
 #include <cereal/types/vector.hpp>
 #include <cereal/archives/binary.hpp>
 
-#include "slash/include/env.h"
-#include "slash/include/slash_string.h"
-
 #include "floyd/src/floyd_context.h"
 #include "floyd/src/floyd_apply.h"
 #include "floyd/src/floyd_worker.h"
@@ -64,7 +61,7 @@ static void BuildTryLockRequest(const std::string& name, const std::string& hold
   auto &lock_request = cmd->lock_request;
   lock_request.name = name;
   lock_request.holder = holder;
-  lock_request.lease_end = slash::NowMicros() + ttl * 1000;
+  lock_request.lease_end = NowMicros() + ttl * 1000;
 }
 
 static void BuildUnLockRequest(const std::string& name, const std::string& holder,
@@ -156,14 +153,15 @@ FloydImpl::~FloydImpl() {
 }
 
 bool FloydImpl::IsSelf(const std::string& ip_port) {
-  return (ip_port == slash::IpPortString(options_.local_ip, options_.local_port));
+  // return (ip_port == slash::IpPortString(options_.local_ip, options_.local_port));
+  return true;
 }
 
 bool FloydImpl::GetLeader(std::string *ip_port) {
   if (context_->leader_ip.empty() || context_->leader_port == 0) {
     return false;
   }
-  *ip_port = slash::IpPortString(context_->leader_ip, context_->leader_port);
+  // *ip_port = slash::IpPortString(context_->leader_ip, context_->leader_port);
   return true;
 }
 
@@ -240,7 +238,7 @@ int FloydImpl::InitPeers() {
 }
 
 std::error_code FloydImpl::Init() {
-  slash::CreatePath(options_.path);
+  // slash::CreatePath(options_.path);
   if (NewLogger(options_.path + "/LOG", &info_log_) != 0) {
     // return Status::Corruption("Open LOG failed, ", strerror(errno));
     return {};
@@ -520,7 +518,8 @@ std::error_code FloydImpl::DoCommand(const CmdRequest& request, CmdResponse *res
   }
   // Redirect to leader
   return worker_client_pool_->SendAndRecv(
-      slash::IpPortString(leader_ip, leader_port),
+      // slash::IpPortString(leader_ip, leader_port),
+      "",
       request, response);
 }
 
@@ -739,7 +738,7 @@ int FloydImpl::ReplyRequestVote(const CmdRequest& request, CmdResponse* response
 
   LOGV(INFO_LEVEL, info_log_, "FloydImpl::ReplyRequestVote: Grant my vote to %s:%d at term %lu",
       context_->voted_for_ip.c_str(), context_->voted_for_port, context_->current_term);
-  context_->last_op_time = slash::NowMicros();
+  context_->last_op_time = NowMicros();
   BuildRequestVoteResponse(context_->current_term, granted, response);
   return 0;
 }
@@ -760,7 +759,7 @@ int FloydImpl::ReplyAppendEntries(const CmdRequest& request, CmdResponse* respon
   const auto &append_entries = request.append_entries;
   std::lock_guard l(context_->global_mu);
   // update last_op_time to avoid another leader election
-  context_->last_op_time = slash::NowMicros();
+  context_->last_op_time = NowMicros();
   // Ignore stale term
   // if the append entries leader's term is smaller than my current term, then the caller must an older leader
   if (append_entries.term < context_->current_term) {

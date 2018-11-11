@@ -9,7 +9,6 @@
 #include "floyd/src/logger.h"
 #include "floyd/include/floyd_options.h"
 
-#include "slash/include/slash_string.h"
 #include "floyd/src/floyd_ds.h"
 
 namespace floyd {
@@ -146,7 +145,7 @@ Client* ClientPool::GetClient(const std::string& server) {
   if (iter == client_map_.end()) {
     std::string ip;
     int port;
-    slash::ParseIpPortString(server, ip, port);
+    // slash::ParseIpPortString(server, ip, port);
     Client* client = new Client(ip, port);
     client_map_[server] = client;
     return client;
