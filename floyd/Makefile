@@ -37,20 +37,6 @@ LIB_SOURCES := $(SRC_DIR)/build_version.cc \
 				$(wildcard $(SRC_DIR)/*.cc) \
 				$(wildcard $(SRC_DIR)/*.c) \
 
-ifndef SLASH_PATH
-  $(warning Warning: slash path missing, using default)
-	SLASH_PATH=$(CURDIR)/third/slash
-endif
-SLASH_INCLUDE_DIR=$(SLASH_PATH)
-SLASH_LIBRARY=$(SLASH_PATH)/slash/lib/libslash.a
-
-ifndef PINK_PATH
-  $(warning Warning: slash path missing, using default)
-	PINK_PATH=$(CURDIR)/third/pink
-endif
-PINK_INCLUDE_DIR=$(PINK_PATH)
-PINK_LIBRARY=$(PINK_PATH)/pink/lib/libpink.a
-
 ifndef ROCKSDB_PATH
   $(warning Warning: rocksdb path missing, using default)
   ROCKSDB_PATH=$(CURDIR)/third/rocksdb
@@ -102,8 +88,8 @@ ifndef DISABLE_WARNING_AS_ERROR
   WARNING_FLAGS += -Werror
 endif
 
-CFLAGS += $(WARNING_FLAGS) -I.. -I$(SLASH_INCLUDE_DIR) -I$(PINK_INCLUDE_DIR) -I$(ROCKSDB_INCLUDE_DIR) $(OPT)
-CXXFLAGS += $(WARNING_FLAGS) -I.. -I$(SLASH_INCLUDE_DIR) -I$(PINK_INCLUDE_DIR) -I$(ROCKSDB_INCLUDE_DIR) -I$(ASIO_INCLUDE_DIR) -I$(CEREAL_INCLUDE_DIR) $(OPT) \
+CFLAGS += $(WARNING_FLAGS) -I.. -I$(ROCKSDB_INCLUDE_DIR) $(OPT)
+CXXFLAGS += $(WARNING_FLAGS) -I.. -I$(ROCKSDB_INCLUDE_DIR) -I$(ASIO_INCLUDE_DIR) -I$(CEREAL_INCLUDE_DIR) $(OPT) \
 						-Woverloaded-virtual -Wnon-virtual-dtor -Wno-missing-field-initializers
 
 date := $(shell date +%F)
