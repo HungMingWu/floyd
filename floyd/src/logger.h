@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <atomic>
 #include <stdarg.h>
+#include <string.h>
 #include <sys/time.h>
 #include <sys/syscall.h>
 

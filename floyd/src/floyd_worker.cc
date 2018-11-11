@@ -16,16 +16,12 @@
 namespace floyd {
 
 FloydWorker::FloydWorker(int port, int cron_interval, FloydImpl* floyd)
-  : conn_factory_(floyd),
-    handle_(floyd) {
-    thread_ = pink::NewHolyThread(port, &conn_factory_, cron_interval, &handle_);
-    thread_->set_thread_name("W:" + std::to_string(port));
+{
 }
 
 FloydWorkerConn::FloydWorkerConn(int fd, const std::string& ip_port,
-    pink::ServerThread* thread, FloydImpl* floyd)
-  : PbConn(fd, ip_port, thread),
-    floyd_(floyd) {
+    FloydImpl* floyd)
+  : floyd_(floyd) {
 }
 
 FloydWorkerConn::~FloydWorkerConn() {}
@@ -37,7 +33,6 @@ int FloydWorkerConn::DealMessage() {
   archive(request_);
 
   response_.type = Type::kRead;
-  set_is_reply(true);
 
   // why we still need to deal with message that is not these type
   switch (request_.type) {
@@ -101,15 +96,6 @@ int FloydWorkerConn::DealMessage() {
       break;
   }
   return 0;
-}
-
-FloydWorkerHandle::FloydWorkerHandle(FloydImpl* f)
-  : floyd_(f) {
-  }
-
-// Only connection from other members should be accepted
-bool FloydWorkerHandle::AccessHandle(std::string& ip_port) const {
-  return true;
 }
 
 }  // namespace floyd

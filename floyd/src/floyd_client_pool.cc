@@ -67,7 +67,7 @@ std::error_code ClientPool::SendAndRecv(const std::string& server, const CmdRequ
    */
   LOGV(DEBUG_LEVEL, info_log_, "ClientPool::SendAndRecv Send %s command to server %s", CmdType(req).c_str(), server.c_str());
   Client *client = GetClient(server);
-  pink::PinkCli* cli = client->cli;
+  //pink::PinkCli* cli = client->cli;
 
   std::lock_guard l(client->mu);
   std::error_code ret = UpHoldCli(client);
@@ -83,7 +83,7 @@ std::error_code ClientPool::SendAndRecv(const std::string& server, const CmdRequ
           " Request type %s", server.c_str(), ret.message().c_str(), CmdType(req).c_str());
       sleep(1);
     }
-    cli->Close();
+    //cli->Close();
     return ret;
   }
 
@@ -102,7 +102,7 @@ std::error_code ClientPool::SendAndRecv(const std::string& server, const CmdRequ
           " Request type %s", server.c_str(), ret.message().c_str(), CmdType(req).c_str());
       sleep(1);
     }
-    cli->Close();
+    //cli->Close();
     return ret;
   }
 
@@ -121,7 +121,7 @@ std::error_code ClientPool::SendAndRecv(const std::string& server, const CmdRequ
           " Request type %s", server.c_str(), ret.message().c_str(), CmdType(req).c_str());
       sleep(1);
     }
-    cli->Close();
+    //cli->Close();
     return ret;
   }
   if (!ret) {
@@ -157,6 +157,7 @@ Client* ClientPool::GetClient(const std::string& server) {
 
 std::error_code ClientPool::UpHoldCli(Client *client) {
   std::error_code ret;
+#if 0
   if (client == NULL || client->cli == NULL) {
     // return Status::Corruption("null PinkCli");
     return {};
@@ -164,14 +165,13 @@ std::error_code ClientPool::UpHoldCli(Client *client) {
 
   pink::PinkCli* cli = client->cli;
   if (!cli->Available()) {
-#if 0
     ret = cli->Connect();
-#endif
     if (!ret) {
       cli->set_send_timeout(timeout_ms_);
       cli->set_recv_timeout(timeout_ms_);
     }
   }
+#endif
   return ret;
 }
 

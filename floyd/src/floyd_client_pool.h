@@ -12,8 +12,6 @@
 #include <mutex>
 #include <system_error>
 
-#include "pink/include/pink_cli.h"
-
 namespace floyd {
 
 class Logger;
@@ -21,11 +19,11 @@ class CmdRequest;
 class CmdResponse;
 
 struct Client {
-  pink::PinkCli* cli;
+  //pink::PinkCli* cli;
   std::mutex mu;
 
   Client(const std::string& ip, int port) {
-    cli = pink::NewPbCli(ip, port);
+    //cli = pink::NewPbCli(ip, port);
   }
 };
 class ClientPool {

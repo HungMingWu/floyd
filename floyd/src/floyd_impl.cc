@@ -13,7 +13,6 @@
 #include <cereal/types/vector.hpp>
 #include <cereal/archives/binary.hpp>
 
-#include "pink/include/bg_thread.h"
 #include "slash/include/env.h"
 #include "slash/include/slash_string.h"
 
@@ -151,7 +150,6 @@ FloydImpl::FloydImpl(const Options& options)
 
 FloydImpl::~FloydImpl() {
   // worker will use floyd, delete worker first
-  worker_->Stop();
   delete info_log_;
   delete db_;
   delete log_and_meta_;
@@ -313,12 +311,6 @@ std::error_code FloydImpl::Init() {
 
   // Start worker thread after Peers, because WorkerHandle will check peers
   worker_ = std::make_unique<FloydWorker>(options_.local_port, 1000, this);
-  int ret = 0;
-  if ((ret = worker_->Start()) != 0) {
-    LOGV(ERROR_LEVEL, info_log_, "FloydImpl::Init worker thread failed to start, ret is %d", ret);
-    // return Status::Corruption("failed to start worker, return " + std::to_string(ret));
-    return {};
-  }
   // Apply thread should start at the last
   apply_ = std::make_unique<FloydApply>(ctx, *context_, db_, *raft_meta_, *raft_log_, this, info_log_);
 
