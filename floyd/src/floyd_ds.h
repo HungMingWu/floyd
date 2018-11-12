@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <string>
+#include <variant>
 #include <vector>
 #include <cstdint>
 #include <chrono>
@@ -96,8 +97,6 @@ namespace floyd {
     kRead = 0,
     kWrite = 1,
     kDelete = 3,
-    kTryLock = 5,
-    kUnLock = 6,
     kAddServer = 11,
     kRemoveServer = 12,
     kGetAllServers = 13,
@@ -108,7 +107,46 @@ namespace floyd {
     kServerStatus = 10
   };
 
-  struct CmdRequest {
+  struct ReadRequest {
+    Type type;
+    std::string key;
+    template <class Archive>
+    void serialize(Archive & ar)
+    {
+      ar(type, key);
+    }
+  };
+  struct AppendEntries {
+    uint64_t term;
+    std::string ip;
+    int32_t port;
+    uint64_t prev_log_index;
+    uint64_t prev_log_term;
+    uint64_t leader_commit;
+    std::vector<Entry> entries;
+    template <class Archive>
+    void serialize(Archive & ar)
+    {
+      ar(term, ip, port, prev_log_index, prev_log_term, leader_commit, entries);
+    }
+  };
+  struct LockRequest {
+    enum class LockOperator : uint8_t {
+      kTryLock = 0,
+      kUnLock = 1
+    };
+    LockOperator operate;
+    std::string name;
+    std::string holder;
+    uint64_t lease_end;
+    template <class Archive>
+    void serialize(Archive & ar)
+    {
+      ar(operate, name, holder, lease_end);
+    }
+  };
+
+  struct CmdRequest1 {
     struct RequestVote {
       uint64_t term;
       std::string ip;
@@ -121,20 +159,6 @@ namespace floyd {
         ar(term, ip, port, last_log_index, last_log_term);
       }
     };
-    struct AppendEntries {
-      uint64_t term;
-      std::string ip;
-      int32_t port;
-      uint64_t prev_log_index;
-      uint64_t prev_log_term;
-      uint64_t leader_commit;
-      std::vector<Entry> entries;
-      template <class Archive>
-      void serialize(Archive & ar)
-      {
-        ar(term, ip, port, prev_log_index, prev_log_term, leader_commit, entries);
-      }
-    };
     struct KvRequest {
       std::string key;
       std::string value;
@@ -142,16 +166,6 @@ namespace floyd {
       void serialize(Archive & ar)
       {
         ar(key, value);
-      }
-    };
-    struct LockRequest {
-      std::string name;
-      std::string holder;
-      uint64_t lease_end;
-      template <class Archive>
-      void serialize(Archive & ar)
-      {
-        ar(name, holder, lease_end);
       }
     };
 
@@ -175,17 +189,17 @@ namespace floyd {
 
     Type type;
     RequestVote request_vote;
-    AppendEntries append_entries;
     KvRequest kv_request;
-    LockRequest lock_request;
     AddServerRequest add_server_request;
     RemoveServerRequest remove_server_request;
     template <class Archive>
     void serialize(Archive & ar)
     {
-      ar(type, request_vote, append_entries, kv_request, lock_request, add_server_request, remove_server_request);
+      ar(type, request_vote, kv_request, add_server_request, remove_server_request);
     }
   };
+
+  using CmdRequest = std::variant<CmdRequest1, ReadRequest, AppendEntries, LockRequest>;
 
   struct CmdResponse {
     enum class StatusCode : uint8_t {

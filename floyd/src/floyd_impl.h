@@ -17,6 +17,7 @@
 #include "floyd/include/floyd_options.h"
 #include "floyd/src/raft_log.h"
 #include "floyd/src/floyd_ds.h"
+#include "floyd/src/expected.hpp"
 
 namespace floyd {
 
@@ -30,8 +31,6 @@ class FloydWorker;
 class FloydWorkerConn;
 class FloydContext;
 class Logger;
-class CmdRequest;
-class CmdResponse;
 class CmdResponse;
 
 typedef std::map<std::string, std::unique_ptr<Peer>> PeersSet;
@@ -103,15 +102,15 @@ class FloydImpl : public Floyd {
 
   bool IsSelf(const std::string& ip_port);
 
-  std::error_code DoCommand(const CmdRequest& cmd, CmdResponse *cmd_res);
-  std::error_code ExecuteCommand(const CmdRequest& cmd, CmdResponse *cmd_res);
-  bool DoGetServerStatus(CmdResponse::ServerStatus* res);
+  nonstd::expected<CmdResponse, std::error_code> DoCommand(const CmdRequest& cmd);
+  nonstd::expected<CmdResponse, std::error_code> ExecuteCommand(const CmdRequest& cmd);
+  CmdResponse::ServerStatus DoGetServerStatus();
 
   /*
    * these two are the response to the request vote and appendentries
    */
-  int ReplyRequestVote(const CmdRequest& cmd, CmdResponse* cmd_res);
-  int ReplyAppendEntries(const CmdRequest& cmd, CmdResponse* cmd_res);
+  std::pair<int, CmdResponse> ReplyRequestVote(const CmdRequest1& cmd);
+  std::pair<int, CmdResponse> ReplyAppendEntries(const AppendEntries& cmd);
 
   bool AdvanceFollowerCommitIndex(uint64_t new_commit_index);
 

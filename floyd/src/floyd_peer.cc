@@ -61,10 +61,10 @@ void Peer::AddRequestVoteTask() {
 void Peer::RequestVoteRPC() {
   uint64_t last_log_term;
   uint64_t last_log_index;
-  CmdRequest req;
+  CmdRequest1 req;
   {
   std::lock_guard l(context_.global_mu);
-  raft_log_.GetLastLogTermAndIndex(&last_log_term, &last_log_index);
+  std::tie(last_log_term, last_log_index) = raft_log_.GetLastLogTermAndIndex();
 
   req.type = Type::kRequestVote;
   auto &request_vote = req.request_vote;
@@ -77,12 +77,11 @@ void Peer::RequestVoteRPC() {
       options_.local_ip.c_str(), options_.local_port, peer_addr_.c_str(), context_.current_term);
   }
 
-  CmdResponse res;
-  std::error_code result = pool_.SendAndRecv(peer_addr_, req, &res);
+  auto result = pool_.SendAndRecv(peer_addr_, req);
 
   if (!result) {
     LOGV(DEBUG_LEVEL, info_log_, "Peer::RequestVoteRPC: RequestVote to %s failed %s",
-         peer_addr_.c_str(), result.message().c_str());
+         peer_addr_.c_str(), result.error().message().c_str());
     return;
   }
 
@@ -90,9 +89,10 @@ void Peer::RequestVoteRPC() {
   std::lock_guard l(context_.global_mu);
   if (!result) {
     LOGV(WARN_LEVEL, info_log_, "Peer::RequestVoteRPC: Candidate %s:%d SendAndRecv to %s failed %s",
-         options_.local_ip.c_str(), options_.local_port, peer_addr_.c_str(), result.message().c_str());
+         options_.local_ip.c_str(), options_.local_port, peer_addr_.c_str(), result.error().message().c_str());
     return;
   }
+  auto &res = *result;
   if (res.request_vote_res.term > context_.current_term) {
     // RequestVote fail, maybe opposite has larger term, or opposite has
     // longer log. if opposite has larger term, this node will become follower
@@ -186,8 +186,7 @@ void Peer::AppendEntriesRPC() {
   uint64_t prev_log_term = 0;
   uint64_t last_log_index = 0;
   uint64_t current_term = 0;
-  CmdRequest req;
-  auto &append_entries = req.append_entries;
+  AppendEntries append_entries;
   {
   std::lock_guard l(context_.global_mu);
   prev_log_index = next_index_ - 1;
@@ -211,7 +210,6 @@ void Peer::AppendEntriesRPC() {
   }
   current_term = context_.current_term;
 
-  req.type = Type::kAppendEntries;
   append_entries.ip = options_.local_ip;
   append_entries.port = options_.local_port;
   append_entries.term = current_term;
@@ -245,17 +243,16 @@ void Peer::AppendEntriesRPC() {
         options_.local_ip.c_str(), options_.local_port, peer_addr_.c_str(), current_term);
   }
 
-  CmdResponse res;
-  std::error_code result = pool_.SendAndRecv(peer_addr_, req, &res);
+  auto result = pool_.SendAndRecv(peer_addr_, append_entries);
 
   {
   std::lock_guard l(context_.global_mu);
   if (!result) {
     LOGV(WARN_LEVEL, info_log_, "Peer::AppendEntries: Leader %s:%d SendAndRecv to %s failed, result is %s\n",
-         options_.local_ip.c_str(), options_.local_port, peer_addr_.c_str(), result.message().c_str());
+         options_.local_ip.c_str(), options_.local_port, peer_addr_.c_str(), result.error().message().c_str());
     return;
   }
-
+  auto &res = *result;
   // here we may get a larger term, and transfer to follower
   if (res.append_entries_res.term > context_.current_term) {
     LOGV(INFO_LEVEL, info_log_, "Peer::AppendEntriesRPC: %s:%d Transfer from Leader to Follower since get A larger term"

@@ -30,7 +30,7 @@ class RaftLog {
   std::optional<Entry> GetEntry(uint64_t index);
 
   uint64_t GetLastLogIndex();
-  bool GetLastLogTermAndIndex(uint64_t* last_log_term, uint64_t* last_log_index);
+  std::pair<uint64_t, uint64_t> GetLastLogTermAndIndex();
   int TruncateSuffix(uint64_t index);
 
  private:

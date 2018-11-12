@@ -13,37 +13,39 @@
 
 namespace floyd {
 
-static std::string CmdType(const CmdRequest& cmd) {
-  std::string ret;
-  switch (cmd.type) {
-    case Type::kRead:
-      ret = "Read";
-      break;
-    case Type::kWrite:
-      ret = "Write";
-      break;
-    case Type::kDelete:
-      ret = "Delete";
-      break;
-    case Type::kTryLock:
-      ret = "TryLock";
-      break;
-    case Type::kUnLock:
-      ret = "UnLock";
-      break;
-    case Type::kRequestVote:
-      ret = "RequestVote";
-      break;
-    case Type::kAppendEntries:
-      ret = "AppendEntries";
-      break;
-    case Type::kServerStatus:
-      ret = "ServerStatus";
-      break;
-    default:
-      ret = "UnknownCmd";
+struct CmdVisitor {
+  std::string operator()(const ReadRequest&) {
+    return "Read";
   }
-  return ret;
+  std::string operator()(const AppendEntries&) {
+    return "AppendEntries";
+  }
+  std::string operator()(const LockRequest &cmd) {
+    if (cmd.operate == LockRequest::LockOperator::kTryLock) return "TryLock";
+    else if (cmd.operate == LockRequest::LockOperator::kUnLock) return "UnLock";
+    else return "UnknownCmd";
+  }
+  std::string operator()(const CmdRequest1& cmd) {
+    switch (cmd.type) {
+      case Type::kRead:
+        return "Read";
+      case Type::kWrite:
+        return "Write";
+      case Type::kDelete:
+        return "Delete";
+      case Type::kRequestVote:
+        return "RequestVote";
+      case Type::kAppendEntries:
+        return "AppendEntries";
+      case Type::kServerStatus:
+        return "ServerStatus";
+      default:
+        return  "UnknownCmd";
+    }
+  }
+};
+static std::string CmdType(const CmdRequest& cmd) {
+  return std::visit(CmdVisitor{}, cmd);
 }
 
 
@@ -54,7 +56,7 @@ ClientPool::ClientPool(Logger* info_log, int timeout_ms, int retry)
 }
 
 // sleep 1 second after each send message
-std::error_code ClientPool::SendAndRecv(const std::string& server, const CmdRequest& req, CmdResponse* res) {
+nonstd::expected<CmdResponse, std::error_code> ClientPool::SendAndRecv(const std::string& server, const CmdRequest& req) {
   /*
    * if (req.type() == kAppendEntries) {
    *   LOGV(INFO_LEVEL, info_log_, "ClientPool::SendAndRecv to %s"
@@ -71,6 +73,7 @@ std::error_code ClientPool::SendAndRecv(const std::string& server, const CmdRequ
   std::lock_guard l(client->mu);
   std::error_code ret = UpHoldCli(client);
   if (!ret) {
+#if 0
     if (req.type == Type::kAppendEntries) {
       LOGV(WARN_LEVEL, info_log_, "ClientPool::SendAndRecv Server Connect to %s failed, error reason: %s"
           " Request type %s prev_log_index %lu prev_log_term %lu leader_commit %lu "
@@ -82,14 +85,16 @@ std::error_code ClientPool::SendAndRecv(const std::string& server, const CmdRequ
           " Request type %s", server.c_str(), ret.message().c_str(), CmdType(req).c_str());
       sleep(1);
     }
+#endif
     //cli->Close();
-    return ret;
+    return nonstd::make_unexpected(ret);
   }
 
 #if 0
   ret = cli->Send((void *)(&req));
 #endif
   if (!ret) {
+#if 0
     if (req.type == Type::kAppendEntries) {
       LOGV(WARN_LEVEL, info_log_, "ClientPool::SendAndRecv Server Send to %s failed, error reason: %s"
           " Request type %s prev_log_index %lu prev_log_term %lu leader_commit %lu "
@@ -101,14 +106,16 @@ std::error_code ClientPool::SendAndRecv(const std::string& server, const CmdRequ
           " Request type %s", server.c_str(), ret.message().c_str(), CmdType(req).c_str());
       sleep(1);
     }
+#endif
     //cli->Close();
-    return ret;
+    return nonstd::make_unexpected(ret);
   }
 
 #if 0
   ret = cli->Recv(res);
 #endif
   if (!ret) {
+#if 0
     if (req.type == Type::kAppendEntries) {
       LOGV(WARN_LEVEL, info_log_, "ClientPool::SendAndRecv Server Recv to %s failed, error reason: %s"
           " Request type %s prev_log_index %lu prev_log_term %lu leader_commit %lu "
@@ -120,15 +127,17 @@ std::error_code ClientPool::SendAndRecv(const std::string& server, const CmdRequ
           " Request type %s", server.c_str(), ret.message().c_str(), CmdType(req).c_str());
       sleep(1);
     }
+#endif
     //cli->Close();
-    return ret;
+    return nonstd::make_unexpected(ret);
   }
+  CmdResponse res;
   if (!ret) {
-    if (res->code == CmdResponse::StatusCode::kOk || res->code == CmdResponse::StatusCode::kNotFound) {
-      return {};
+    if (res.code == CmdResponse::StatusCode::kOk || res.code == CmdResponse::StatusCode::kNotFound) {
+      return res;
     }
   }
-  return ret;
+  return res;
 }
 
 ClientPool::~ClientPool() {

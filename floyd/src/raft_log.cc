@@ -7,6 +7,7 @@
 
 #include <cereal/types/memory.hpp>
 #include <cereal/archives/binary.hpp>
+#include <cereal/archives/portable_binary.hpp>
 
 #include <vector>
 #include <string>
@@ -19,17 +20,19 @@
 #include "floyd/src/floyd_ds.h"
 
 namespace floyd {
-extern std::string UintToBitStr(const uint64_t num) {
-  char buf[8];
-  uint64_t num1 = htobe64(num);
-  memcpy(buf, &num1, sizeof(uint64_t));
-  return std::string(buf, 8);
+std::string UintToBitStr(const uint64_t num) {
+  std::ostringstream os;
+  cereal::PortableBinaryOutputArchive archive(os);
+  archive(num);
+  return std::move(os.str());
 }
 
-extern uint64_t BitStrToUint(const std::string &str) {
+uint64_t BitStrToUint(const std::string &str) {
   uint64_t num;
-  memcpy(&num, str.c_str(), sizeof(uint64_t));
-  return be64toh(num);
+  std::istringstream is(str);
+  cereal::PortableBinaryInputArchive archive(is);
+  archive(num);
+  return num;
 }
 
 RaftLog::RaftLog(rocksdb::DB *db, Logger *info_log) :
@@ -96,27 +99,21 @@ std::optional<Entry> RaftLog::GetEntry(const uint64_t index) {
   return entry;
 }
 
-bool RaftLog::GetLastLogTermAndIndex(uint64_t* last_log_term, uint64_t* last_log_index) {
+std::pair<uint64_t, uint64_t> RaftLog::GetLastLogTermAndIndex() {
   std::lock_guard l(lli_mutex_);
   if (last_log_index_ == 0) {
-    *last_log_index = 0;
-    *last_log_term = 0;
-    return true;
+    return {0, 0};
   }
   std::string buf;
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), UintToBitStr(last_log_index_), &buf);
   if (!s.ok() || s.IsNotFound()) {
-    *last_log_index = 0;
-    *last_log_term = 0;
-    return true;
+    return {0, 0};
   }
   Entry entry;
   std::istringstream is(buf);
   cereal::BinaryInputArchive archive(is);
   archive(entry);
-  *last_log_index = last_log_index_;
-  *last_log_term = entry.term;
-  return true;
+  return {entry.term, last_log_index_};
 }
 
 /*

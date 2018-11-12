@@ -12,10 +12,12 @@
 #include <mutex>
 #include <system_error>
 
+#include "floyd/src/expected.hpp"
+#include "floyd/src/floyd_ds.h"
+
 namespace floyd {
 
 class Logger;
-class CmdRequest;
 class CmdResponse;
 
 struct Client {
@@ -32,8 +34,7 @@ class ClientPool {
   ~ClientPool();
 
   // Each try consists of Connect, Send and Recv;
-  std::error_code SendAndRecv(const std::string& server, const CmdRequest& req,
-      CmdResponse* res);
+  nonstd::expected<CmdResponse, std::error_code> SendAndRecv(const std::string& server, const CmdRequest& req);
 
   std::error_code UpHoldCli(Client* client);
 
